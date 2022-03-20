@@ -19,5 +19,6 @@ jobs:
           key: npm-v2-${{ hashFiles('**/package-lock.json') }}
           restore-keys: npm-v2-
       - run: npm ci
+      - run: npm run compile
       - run: npm run lint
       - run: npm run test
