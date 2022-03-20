@@ -4,7 +4,10 @@
   "description": "ERC20 Token contracts for Backed Finance AG",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "coverage": "hardhat coverage",
+    "lint": "solhint ./contracts/** && eslint ./test/**"
   },
   "author": "adam@backed.fi",
   "license": "ISC",
