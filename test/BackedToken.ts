@@ -1,7 +1,6 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { Signer } from "ethers";
-// eslint-disable-next-line node/no-missing-import
 import { BackedToken } from "../typechain";
 
 type SignerWithAddress = {
@@ -140,7 +139,9 @@ describe("BackedToken", function () {
   });
 
   it("Try to burn from unauthorized account", async function () {
+    await token.setMinter(minter.address);
     await token.setBurner(burner.address);
+    await token.connect(minter.signer).mint(tmpAccount.address, 100);
     await expect(token.burn(tmpAccount.address, 100)).to.revertedWith(
       "BackedToken: Only burner"
     );

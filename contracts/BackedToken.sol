@@ -1,11 +1,10 @@
 //SPDX-License-Identifier: ISC
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "./ERC20Permit.sol";
+import "./ERC20PermitDelegateTransfer.sol";
 
-contract BackedToken is ERC20, Ownable, ERC20Permit {
+contract BackedToken is Ownable, ERC20PermitDelegateTransfer {
     // Roles:
     address public minter;
     address public burner;
@@ -27,7 +26,7 @@ contract BackedToken is ERC20, Ownable, ERC20Permit {
         _;
     }
 
-    constructor (string memory name_, string memory symbol_) ERC20(name_, symbol_) ERC20Permit(name_) {}
+    constructor (string memory name_, string memory symbol_) ERC20PermitDelegateTransfer(name_, symbol_) {}
 
 
     function permit(
@@ -85,7 +84,7 @@ contract BackedToken is ERC20, Ownable, ERC20Permit {
         emit DelegationWhitelistChange(whitelistAddress, status);
     }
 
-    function flipDelegateMode(bool delegationMode) public onlyOwner {
+    function setDelegateMode(bool delegationMode) public onlyOwner {
         delegateMode = delegationMode;
         emit DelegationModeChange(delegationMode);
     }   
