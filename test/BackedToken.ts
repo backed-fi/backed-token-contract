@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { BigNumber, Signer } from "ethers";
+// eslint-disable-next-line node/no-missing-import
 import { BackedToken } from "../typechain";
 
 type SignerWithAddress = {
