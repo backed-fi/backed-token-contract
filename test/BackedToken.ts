@@ -35,7 +35,7 @@ describe("BackedToken", function () {
       signer: accounts[3],
       address: await accounts[3].getAddress(),
     };
-    const network = await ethers.getDefaultProvider().getNetwork();
+    const network = await ethers.provider.getNetwork();
     chainId = BigNumber.from(network.chainId);
   });
 
@@ -152,22 +152,24 @@ describe("BackedToken", function () {
   });
 
   it("ERC712 Domain Separator", async function () {
-    const domainSeparator = ethers.utils.solidityKeccak256(
-      ["bytes32", "bytes32", "bytes32", "uint256", "address"],
-      [
-        ethers.utils.keccak256(
-          ethers.utils.toUtf8Bytes(
-            "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
-          )
-        ),
-        ethers.utils.keccak256(ethers.utils.toUtf8Bytes(tokenName)),
-        ethers.utils.keccak256(ethers.utils.toUtf8Bytes("1")),
-        chainId,
-        token.address,
-      ]
+    const domainSeparator = ethers.utils.keccak256(
+      ethers.utils.defaultAbiCoder.encode(
+        ["bytes32", "bytes32", "bytes32", "uint256", "address"],
+        [
+          ethers.utils.keccak256(
+            ethers.utils.toUtf8Bytes(
+              "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+            )
+          ),
+          ethers.utils.keccak256(ethers.utils.toUtf8Bytes(tokenName)),
+          ethers.utils.keccak256(ethers.utils.toUtf8Bytes("1")),
+          chainId,
+          token.address,
+        ]
+      )
     );
     // ToDo:
-    // expect(await token.DOMAIN_SEPARATOR()).to.equal(domainSeparator);
+    expect(await token.DOMAIN_SEPARATOR()).to.equal(domainSeparator);
   });
 
   it("ERC712 TypeHashs", async function () {
@@ -187,6 +189,57 @@ describe("BackedToken", function () {
     );
     expect(await token.DELEGATED_TRANSFER_TYPEHASH()).to.equal(
       delegatedTransferTypehash
+    );
+  });
+
+  it("Permit ERC712 test", async function () {
+    const domain = {
+      name: tokenName,
+      version: "1",
+      chainId: chainId,
+      verifyingContract: token.address,
+    };
+
+    const types = {
+      Permit: [
+        { name: "owner", type: "address" },
+        { name: "spender", type: "address" },
+        { name: "value", type: "uint256" },
+        { name: "nonce", type: "uint256" },
+        { name: "deadline", type: "uint256" },
+      ],
+      // DelegatedTransfer: [
+      //   { name: "owner", type: "address" },
+      //   { name: "to", type: "address" },
+      //   { name: "value", type: "uint256" },
+      //   { name: "nonce", type: "uint256" },
+      //   // { name: "deadline", type: "uint256" },
+      // ],
+    };
+
+    const msg = {
+      owner: tmpAccount.address,
+      spender: minter.address,
+      value: 100,
+      nonce: 0,
+      deadline: ethers.constants.MaxUint256,
+    };
+
+    const signer = await ethers.getSigner(tmpAccount.address);
+    const sig = await signer._signTypedData(domain, types, msg);
+    const splitSig = ethers.utils.splitSignature(sig);
+    await token.setDelegateMode(true);
+    await token.permit(
+      tmpAccount.address,
+      minter.address,
+      100,
+      ethers.constants.MaxUint256,
+      splitSig.v,
+      splitSig.r,
+      splitSig.s
+    );
+    expect(await token.allowance(tmpAccount.address, minter.address)).to.equal(
+      100
     );
   });
 });
