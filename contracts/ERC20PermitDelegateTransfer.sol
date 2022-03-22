@@ -33,10 +33,7 @@ contract ERC20PermitDelegateTransfer is ERC20 {
     string internal constant VERSION = "1";
 
     // solhint-disable-next-line var-name-mixedcase
-    bytes32 public immutable PERMIT_DOMAIN_SEPARATOR;
-    // solhint-disable-next-line var-name-mixedcase
-    bytes32 public immutable DELEGATED_TRANSFER_DOMAIN_SEPARATOR;
-
+    bytes32 public immutable DOMAIN_SEPARATOR;
 
     /**
      * @dev
@@ -44,18 +41,9 @@ contract ERC20PermitDelegateTransfer is ERC20 {
      * 
      */
     constructor(string memory name_, string memory symbol_) ERC20(name_, symbol_) {
-        PERMIT_DOMAIN_SEPARATOR = keccak256(
+        DOMAIN_SEPARATOR = keccak256(
             abi.encode(
-                PERMIT_TYPEHASH,
-                keccak256(bytes(name())),
-                keccak256(bytes(VERSION)),
-                block.chainid,
-                address(this)
-            )
-        );
-        DELEGATED_TRANSFER_DOMAIN_SEPARATOR = keccak256(
-            abi.encode(
-                DELEGATED_TRANSFER_TYPEHASH,
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
                 keccak256(bytes(name())),
                 keccak256(bytes(VERSION)),
                 block.chainid,
@@ -80,7 +68,7 @@ contract ERC20PermitDelegateTransfer is ERC20 {
 
         bytes32 structHash = keccak256(abi.encode(PERMIT_TYPEHASH, owner, spender, value, _useNonce(owner), deadline));
 
-        bytes32 hash = ECDSA.toTypedDataHash(PERMIT_DOMAIN_SEPARATOR, structHash);
+        bytes32 hash = ECDSA.toTypedDataHash(DOMAIN_SEPARATOR, structHash);
 
         address signer = ECDSA.recover(hash, v, r, s);
         require(signer == owner, "ERC20Permit: invalid signature");
@@ -101,7 +89,7 @@ contract ERC20PermitDelegateTransfer is ERC20 {
 
         bytes32 structHash = keccak256(abi.encode(DELEGATED_TRANSFER_TYPEHASH, owner, to, value, _useNonce(owner), deadline));
 
-        bytes32 hash = ECDSA.toTypedDataHash(DELEGATED_TRANSFER_DOMAIN_SEPARATOR, structHash);
+        bytes32 hash = ECDSA.toTypedDataHash(DOMAIN_SEPARATOR, structHash);
 
         address signer = ECDSA.recover(hash, v, r, s);
         require(signer == owner, "ERC20Permit: invalid signature");

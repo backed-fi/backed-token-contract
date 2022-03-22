@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { Signer } from "ethers";
+import { BigNumber, Signer } from "ethers";
 import { BackedToken } from "../typechain";
 
 type SignerWithAddress = {
@@ -20,6 +20,7 @@ describe("BackedToken", function () {
   let minter: SignerWithAddress;
   let burner: SignerWithAddress;
   let tmpAccount: SignerWithAddress;
+  let chainId: BigNumber;
 
   beforeEach(async () => {
     const Token = await ethers.getContractFactory("BackedToken");
@@ -33,6 +34,8 @@ describe("BackedToken", function () {
       signer: accounts[3],
       address: await accounts[3].getAddress(),
     };
+    const network = await ethers.getDefaultProvider().getNetwork();
+    chainId = BigNumber.from(network.chainId);
   });
 
   it("Basic information check", async function () {
@@ -144,6 +147,45 @@ describe("BackedToken", function () {
     await token.connect(minter.signer).mint(tmpAccount.address, 100);
     await expect(token.burn(tmpAccount.address, 100)).to.revertedWith(
       "BackedToken: Only burner"
+    );
+  });
+
+  it("ERC712 Domain Separator", async function () {
+    const domainSeparator = ethers.utils.solidityKeccak256(
+      ["bytes32", "bytes32", "bytes32", "uint256", "address"],
+      [
+        ethers.utils.keccak256(
+          ethers.utils.toUtf8Bytes(
+            "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+          )
+        ),
+        ethers.utils.keccak256(ethers.utils.toUtf8Bytes(tokenName)),
+        ethers.utils.keccak256(ethers.utils.toUtf8Bytes("1")),
+        chainId,
+        token.address,
+      ]
+    );
+    // ToDo:
+    // expect(await token.DOMAIN_SEPARATOR()).to.equal(domainSeparator);
+  });
+
+  it("ERC712 TypeHashs", async function () {
+    // Check Permit TypeHash:
+    const permitTypehash = ethers.utils.keccak256(
+      ethers.utils.toUtf8Bytes(
+        "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"
+      )
+    );
+    expect(await token.PERMIT_TYPEHASH()).to.equal(permitTypehash);
+
+    // Check Permit TypeHash:
+    const delegatedTransferTypehash = ethers.utils.keccak256(
+      ethers.utils.toUtf8Bytes(
+        "DELEGATED_TRANSFER(address owner,address to,uint256 value,uint256 nonce,uint256 deadline)"
+      )
+    );
+    expect(await token.DELEGATED_TRANSFER_TYPEHASH()).to.equal(
+      delegatedTransferTypehash
     );
   });
 });
