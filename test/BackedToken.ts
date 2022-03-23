@@ -1,9 +1,8 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { BigNumber, Bytes, Signer } from "ethers";
+import { BigNumber, Signer } from "ethers";
 // eslint-disable-next-line node/no-missing-import
 import { BackedToken } from "../typechain";
-import { timeStamp } from "console";
 
 type SignerWithAddress = {
   signer: Signer;
@@ -216,7 +215,7 @@ describe("BackedToken", function () {
       ],
     };
 
-    let msg = {
+    const msg = {
       owner: tmpAccount.address,
       spender: minter.address,
       value: 100,
@@ -312,7 +311,7 @@ describe("BackedToken", function () {
       ],
     };
 
-    let msg = {
+    const msg = {
       owner: tmpAccount.address,
       to: minter.address,
       value: 100,
