@@ -22,7 +22,7 @@ contract BackedToken is Ownable, ERC20PermitDelegateTransfer {
 
     
     modifier allowedDelegation {
-        require(delegateMode || delegateWhitelist[_msgSender()], "BackedToken: Unautherized delegate");
+        require(delegateMode || delegateWhitelist[_msgSender()], "BackedToken: Unauthorized delegate");
         _;
     }
 
@@ -43,14 +43,14 @@ contract BackedToken is Ownable, ERC20PermitDelegateTransfer {
 
     function delegatedTransfer(
         address owner,
-        address spender,
+        address to,
         uint256 value,
         uint256 deadline,
         uint8 v,
         bytes32 r,
         bytes32 s
     ) public override allowedDelegation {
-        super.delegatedTransfer(owner, spender, value, deadline, v, r, s);
+        super.delegatedTransfer(owner, to, value, deadline, v, r, s);
     }
 
     // Mint/Burn functionality:

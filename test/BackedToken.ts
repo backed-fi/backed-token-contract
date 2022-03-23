@@ -1,8 +1,9 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { BigNumber, Signer } from "ethers";
+import { BigNumber, Bytes, Signer } from "ethers";
 // eslint-disable-next-line node/no-missing-import
 import { BackedToken } from "../typechain";
+import { timeStamp } from "console";
 
 type SignerWithAddress = {
   signer: Signer;
@@ -24,9 +25,12 @@ describe("BackedToken", function () {
   let chainId: BigNumber;
 
   beforeEach(async () => {
+    // Deploy contract:
     const Token = await ethers.getContractFactory("BackedToken");
     token = await Token.deploy(tokenName, tokenSymbol);
     await token.deployed();
+
+    // Get accounts:
     accounts = await ethers.getSigners();
     owner = { signer: accounts[0], address: await accounts[0].getAddress() };
     minter = { signer: accounts[1], address: await accounts[1].getAddress() };
@@ -35,6 +39,8 @@ describe("BackedToken", function () {
       signer: accounts[3],
       address: await accounts[3].getAddress(),
     };
+
+    // Chain Id
     const network = await ethers.provider.getNetwork();
     chainId = BigNumber.from(network.chainId);
   });
@@ -208,16 +214,9 @@ describe("BackedToken", function () {
         { name: "nonce", type: "uint256" },
         { name: "deadline", type: "uint256" },
       ],
-      // DelegatedTransfer: [
-      //   { name: "owner", type: "address" },
-      //   { name: "to", type: "address" },
-      //   { name: "value", type: "uint256" },
-      //   { name: "nonce", type: "uint256" },
-      //   // { name: "deadline", type: "uint256" },
-      // ],
     };
 
-    const msg = {
+    let msg = {
       owner: tmpAccount.address,
       spender: minter.address,
       value: 100,
@@ -225,11 +224,27 @@ describe("BackedToken", function () {
       deadline: ethers.constants.MaxUint256,
     };
 
+    // Sign permit:
     const signer = await ethers.getSigner(tmpAccount.address);
     const sig = await signer._signTypedData(domain, types, msg);
     const splitSig = ethers.utils.splitSignature(sig);
-    await token.setDelegateMode(true);
-    await token.permit(
+
+    // Try to send it when delegation mode is off:
+    await expect(
+      token.permit(
+        tmpAccount.address,
+        minter.address,
+        100,
+        ethers.constants.MaxUint256,
+        splitSig.v,
+        splitSig.r,
+        splitSig.s
+      )
+    ).to.revertedWith("BackedToken: Unauthorized delegate");
+
+    // Whitelist an address and relay signature:
+    await token.setDelegationWhitelist(owner.address, true);
+    const tx = await token.permit(
       tmpAccount.address,
       minter.address,
       100,
@@ -238,8 +253,134 @@ describe("BackedToken", function () {
       splitSig.r,
       splitSig.s
     );
+    const recipt = await tx.wait();
+    expect(recipt.events?.[0].event).to.equal("Approval");
+    expect(recipt.events?.[0].args?.[0]).to.equal(tmpAccount.address);
+    expect(recipt.events?.[0].args?.[1]).to.equal(minter.address);
+    expect(recipt.events?.[0].args?.[2]).to.equal(100);
     expect(await token.allowance(tmpAccount.address, minter.address)).to.equal(
       100
     );
+
+    // Set delegation mode to true and try again:
+    await token.setDelegateMode(true);
+    msg.nonce = 1;
+    msg.value = 150;
+    const sig2 = await signer._signTypedData(domain, types, msg);
+    const splitSig2 = ethers.utils.splitSignature(sig2);
+
+    const tx2 = await token
+      .connect(minter.signer)
+      .permit(
+        tmpAccount.address,
+        minter.address,
+        150,
+        ethers.constants.MaxUint256,
+        splitSig2.v,
+        splitSig2.r,
+        splitSig2.s
+      );
+    const recipt2 = await tx2.wait();
+    expect(recipt2.events?.[0].event).to.equal("Approval");
+    expect(recipt2.events?.[0].args?.[0]).to.equal(tmpAccount.address);
+    expect(recipt2.events?.[0].args?.[1]).to.equal(minter.address);
+    expect(recipt2.events?.[0].args?.[2]).to.equal(150);
+    expect(await token.allowance(tmpAccount.address, minter.address)).to.equal(
+      150
+    );
+  });
+
+  it("Delegate Transfer ERC712 test", async function () {
+    // Mint tokens:
+    await token.setMinter(minter.address);
+    token.connect(minter.signer).mint(tmpAccount.address, 500);
+
+    const domain = {
+      name: tokenName,
+      version: "1",
+      chainId: chainId,
+      verifyingContract: token.address,
+    };
+
+    const types = {
+      DELEGATED_TRANSFER: [
+        { name: "owner", type: "address" },
+        { name: "to", type: "address" },
+        { name: "value", type: "uint256" },
+        { name: "nonce", type: "uint256" },
+        { name: "deadline", type: "uint256" },
+      ],
+    };
+
+    let msg = {
+      owner: tmpAccount.address,
+      to: minter.address,
+      value: 100,
+      nonce: 0,
+      deadline: ethers.constants.MaxUint256,
+    };
+
+    // Sign delegate tranfer:
+    const signer = await ethers.getSigner(tmpAccount.address);
+    const sig = await signer._signTypedData(domain, types, msg);
+    const splitSig = ethers.utils.splitSignature(sig);
+
+    // Try to send it when delegation mode is off:
+    await expect(
+      token.delegatedTransfer(
+        tmpAccount.address,
+        minter.address,
+        100,
+        ethers.constants.MaxUint256,
+        splitSig.v,
+        splitSig.r,
+        splitSig.s
+      )
+    ).to.revertedWith("BackedToken: Unauthorized delegate");
+
+    // Whitelist an address and relay signature:
+    await token.setDelegationWhitelist(owner.address, true);
+    const tx = await token.delegatedTransfer(
+      tmpAccount.address,
+      minter.address,
+      100,
+      ethers.constants.MaxUint256,
+      splitSig.v,
+      splitSig.r,
+      splitSig.s
+    );
+    const recipt = await tx.wait();
+    expect(recipt.events?.[0].event).to.equal("Transfer");
+    expect(recipt.events?.[0].args?.[0]).to.equal(tmpAccount.address);
+    expect(recipt.events?.[0].args?.[1]).to.equal(minter.address);
+    expect(recipt.events?.[0].args?.[2]).to.equal(100);
+    expect(await token.balanceOf(tmpAccount.address)).to.equal(400);
+    expect(await token.balanceOf(minter.address)).to.equal(100);
+
+    // Set delegation mode to true and try again:
+    await token.setDelegateMode(true);
+    msg.nonce = 1;
+    msg.value = 200;
+    const sig2 = await signer._signTypedData(domain, types, msg);
+    const splitSig2 = ethers.utils.splitSignature(sig2);
+
+    const tx2 = await token
+      .connect(minter.signer)
+      .delegatedTransfer(
+        tmpAccount.address,
+        minter.address,
+        200,
+        ethers.constants.MaxUint256,
+        splitSig2.v,
+        splitSig2.r,
+        splitSig2.s
+      );
+    const recipt2 = await tx2.wait();
+    expect(recipt2.events?.[0].event).to.equal("Transfer");
+    expect(recipt2.events?.[0].args?.[0]).to.equal(tmpAccount.address);
+    expect(recipt2.events?.[0].args?.[1]).to.equal(minter.address);
+    expect(recipt2.events?.[0].args?.[2]).to.equal(200);
+    expect(await token.balanceOf(tmpAccount.address)).to.equal(200);
+    expect(await token.balanceOf(minter.address)).to.equal(300);
   });
 });
