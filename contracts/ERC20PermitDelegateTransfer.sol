@@ -1,44 +1,45 @@
 // SPDX-License-Identifier: ISC
-// Based on OpenZeppelin draft-ERC20Permit.sol (token/ERC20/extensions/draft-ERC20Permit.sol), added delegatedTranfer
+// 
 
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import "@openzeppelin/contracts/utils/Counters.sol";
 
 /**
- * @dev Implementation of the ERC20 Permit extension allowing approvals to be made via signatures, as defined in
- * https://eips.ethereum.org/EIPS/eip-2612[EIP-2612].
+ * @dev 
  *
- * Adds the {permit} method, which can be used to change an account's ERC20 allowance (see {IERC20-allowance}) by
- * presenting a message signed by the account. By not relying on `{IERC20-approve}`, the token holder account doesn't
- * need to send a transaction, and thus is not required to hold Ether at all.
+ * This contract is a based (copy-paste with changes) on OpenZeppelin's draft-ERC20Permit.sol (token/ERC20/extensions/draft-ERC20Permit.sol).
+ * 
+ * The changes are:
+ *  - Adding also delegated transfer functionality, that is similar to permit, but doing the actual transfer and not approval.
+ *  - Cutting some of the generalities to make the contacts more stright forward for this case (e.g. removing the counters library). 
  *
- * _Available since v3.4._
- */
+*/
+
 contract ERC20PermitDelegateTransfer is ERC20 {
-    using Counters for Counters.Counter;
+    mapping(address => uint256) private nonces;
 
-    mapping(address => Counters.Counter) private _nonces;
-
-    // solhint-disable-next-line var-name-mixedcase
+    // Calculating the Permit typehash:
     bytes32 public constant PERMIT_TYPEHASH =
         keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
-    // solhint-disable-next-line var-name-mixedcase
+    // Calculating the Delegated Transfer typehash:
     bytes32 public constant DELEGATED_TRANSFER_TYPEHASH =
         keccak256("DELEGATED_TRANSFER(address owner,address to,uint256 value,uint256 nonce,uint256 deadline)");
 
-    string internal constant VERSION = "1";
-
+    // Immutable variable for Domain Separator:
     // solhint-disable-next-line var-name-mixedcase
     bytes32 public immutable DOMAIN_SEPARATOR;
+
+    // A version number:
+    string internal constant VERSION = "1";
+
 
     /**
      * @dev
      *
-     * 
+     * Calculate the DOMAIN_SEPARATOR structHash:
      */
     constructor(string memory name_, string memory symbol_) ERC20(name_, symbol_) {
         DOMAIN_SEPARATOR = keccak256(
@@ -53,7 +54,7 @@ contract ERC20PermitDelegateTransfer is ERC20 {
     }
 
     /**
-     * @dev See {IERC20Permit-permit}.
+     * @dev Permit, approve via a sign message, using erc712.
      */
     function permit(
         address owner,
@@ -76,6 +77,9 @@ contract ERC20PermitDelegateTransfer is ERC20 {
         _approve(owner, spender, value);
     }
 
+    /**
+     * @dev Delegated Transfer, transfer via a sign message, using erc712.
+     */
     function delegatedTransfer(
         address owner,
         address to,
@@ -98,20 +102,10 @@ contract ERC20PermitDelegateTransfer is ERC20 {
     }
 
     /**
-     * @dev See {IERC20Permit-nonces}.
-     */
-    function nonces(address owner) public view virtual returns (uint256) {
-        return _nonces[owner].current();
-    }
-
-    /**
      * @dev "Consume a nonce": return the current value and increment.
-     *
-     * _Available since v4.1._
      */
     function _useNonce(address owner) internal virtual returns (uint256 current) {
-        Counters.Counter storage nonce = _nonces[owner];
-        current = nonce.current();
-        nonce.increment();
+        current = nonces[owner];
+        nonces[owner]++;
     }
 }
