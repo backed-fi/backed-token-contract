@@ -8,11 +8,12 @@ import "./ERC20PermitDelegateTransfer.sol";
  * @dev
  *
  * This token contract is following the ERC20 standard.
- * It inherits ERC20PermitDelegateTransfer.sol, which extends the basic ERC20 to also allow permit and delegateTranfer ERC712 functionality.
+ * It inherits ERC20PermitDelegateTransfer.sol, which extends the basic ERC20 to also allow permit and delegateTransfer ERC712 functionality.
  * The contract contains three roles:
- *  - A minter, that can mint new toekns.
+ *  - A minter, that can mint new tokens.
  *  - A burner, that can burn its own tokens, or contract's tokens.
- *  - An owner, that can set the two above.
+ *  - A pauser, that can pause or restore all transfers in the contract.
+ *  - An owner, that can set the three above.
  * The owner can also set who can use the ERC712 functionality, either specific accounts via a whitelist, or everyone.
  * 
  */
@@ -21,18 +22,22 @@ contract BackedToken is Ownable, ERC20PermitDelegateTransfer {
     // Roles:
     address public minter;
     address public burner;
+    address public pauser;
 
     // ERC712 delegation:
     bool public delegateMode;
     mapping (address=>bool) public delegateWhitelist;
 
+    // Pause:
+    bool public isPaused;
 
     // Events:
     event NewMinter(address indexed newMinter);
     event NewBurner(address indexed newBurner);
+    event NewPauser(address indexed newPauser);
     event DelegationWhitelistChange(address indexed whitelistAddress, bool status);
     event DelegationModeChange(bool delegationMode);
-
+    event PauseModeChange(bool pauseMode);
     
     modifier allowedDelegation {
         require(delegateMode || delegateWhitelist[_msgSender()], "BackedToken: Unauthorized delegate");
@@ -80,18 +85,29 @@ contract BackedToken is Ownable, ERC20PermitDelegateTransfer {
         _burn(account, amount);
     }
 
+    // Set pause, to block or restore all transfers. Only allowed for pauser:
+    function setPause(bool newPauseMode) public {
+        require(_msgSender() == pauser, "BackedToken: Only pauser");
+        isPaused = newPauseMode;
+        emit PauseModeChange(newPauseMode);
+    }
+
     // Set minter, only owner:
     function setMinter(address newMinter) public onlyOwner {
-        require(newMinter != address(0), "BackedToken: Minter cannot be 0");
         minter = newMinter;
         emit NewMinter(newMinter);
     }
 
     // Set burner, only owner:
     function setBurner(address newBurner) public onlyOwner {
-        require(newBurner != address(0), "BackedToken: Burner cannot be 0");
         burner = newBurner;
         emit NewBurner(newBurner);
+    }
+
+    // Set pauser, only owner:
+    function setPauser(address newPauser) public onlyOwner {
+        pauser = newPauser;
+        emit NewPauser(newPauser);
     }
 
     // ERC712 set delegation whitelist, only owner:
@@ -106,4 +122,14 @@ contract BackedToken is Ownable, ERC20PermitDelegateTransfer {
         emit DelegationModeChange(delegationMode);
     }   
 
+    // Implement the pause functionality:
+    function _beforeTokenTransfer(
+        address from,
+        address to,
+        uint256 amount
+    ) internal virtual override {
+        super._beforeTokenTransfer(from, to, amount);
+
+        require(!isPaused, "BackedToken: token transfer while paused");
+    }
 }

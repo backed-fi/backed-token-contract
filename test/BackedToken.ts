@@ -20,6 +20,7 @@ describe("BackedToken", function () {
   let owner: SignerWithAddress;
   let minter: SignerWithAddress;
   let burner: SignerWithAddress;
+  let pauser: SignerWithAddress;
   let tmpAccount: SignerWithAddress;
   let chainId: BigNumber;
 
@@ -34,9 +35,10 @@ describe("BackedToken", function () {
     owner = { signer: accounts[0], address: await accounts[0].getAddress() };
     minter = { signer: accounts[1], address: await accounts[1].getAddress() };
     burner = { signer: accounts[2], address: await accounts[2].getAddress() };
+    pauser = { signer: accounts[3], address: await accounts[3].getAddress() };
     tmpAccount = {
-      signer: accounts[3],
-      address: await accounts[3].getAddress(),
+      signer: accounts[4],
+      address: await accounts[4].getAddress(),
     };
 
     // Chain Id
@@ -160,6 +162,51 @@ describe("BackedToken", function () {
     await expect(token.burn(tmpAccount.address, 100)).to.revertedWith(
       "BackedToken: Only burner"
     );
+  });
+
+  it("Define Pauser and transfer Pauser", async function () {
+    // Set Pauser
+    let receipt = await (await token.setPauser(pauser.address)).wait();
+    expect(receipt.events?.[0].event).to.equal("NewPauser");
+    expect(receipt.events?.[0].args?.[0]).to.equal(pauser.address);
+    expect(await token.pauser()).to.equal(pauser.address);
+
+    // Change Pauser
+    receipt = await (await token.setPauser(tmpAccount.address)).wait();
+    expect(receipt.events?.[0].event).to.equal("NewPauser");
+    expect(receipt.events?.[0].args?.[0]).to.equal(tmpAccount.address);
+  });
+
+  it("Try to define Pauser from wrong address", async function () {
+    await expect(
+      token.connect(accounts[3]).setPauser(pauser.address)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
+  it("Pause and Unpause", async function () {
+    await token.setMinter(minter.address);
+    await token.connect(minter.signer).mint(owner.address, 100);
+    await token.setPauser(pauser.address);
+
+    const receipt = await (
+      await token.connect(pauser.signer).setPause(true)
+    ).wait();
+    expect(receipt.events?.[0].event).to.equal("PauseModeChange");
+    expect(receipt.events?.[0].args?.[0]).to.equal(true);
+
+    await expect(token.transfer(tmpAccount.address, 100)).to.be.revertedWith(
+      "BackedToken: token transfer while paused"
+    );
+
+    // Unpause:
+    const receipt2 = await (
+      await token.connect(pauser.signer).setPause(false)
+    ).wait();
+    expect(receipt2.events?.[0].event).to.equal("PauseModeChange");
+    expect(receipt2.events?.[0].args?.[0]).to.equal(false);
+
+    await token.transfer(tmpAccount.address, 100);
+    expect(await token.balanceOf(tmpAccount.address)).to.equal(100);
   });
 
   it("ERC712 Domain Separator", async function () {
