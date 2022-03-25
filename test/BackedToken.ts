@@ -52,15 +52,15 @@ describe("BackedToken", function () {
 
   it("Define Minter and transfer Minter", async function () {
     // Set Minter
-    let recipt = await (await token.setMinter(minter.address)).wait();
-    expect(recipt.events?.[0].event).to.equal("NewMinter");
-    expect(recipt.events?.[0].args?.[0]).to.equal(minter.address);
+    let receipt = await (await token.setMinter(minter.address)).wait();
+    expect(receipt.events?.[0].event).to.equal("NewMinter");
+    expect(receipt.events?.[0].args?.[0]).to.equal(minter.address);
     expect(await token.minter()).to.equal(minter.address);
 
     // Change Minter
-    recipt = await (await token.setMinter(tmpAccount.address)).wait();
-    expect(recipt.events?.[0].event).to.equal("NewMinter");
-    expect(recipt.events?.[0].args?.[0]).to.equal(tmpAccount.address);
+    receipt = await (await token.setMinter(tmpAccount.address)).wait();
+    expect(receipt.events?.[0].event).to.equal("NewMinter");
+    expect(receipt.events?.[0].args?.[0]).to.equal(tmpAccount.address);
   });
 
   it("Try to define Minter from wrong address", async function () {
@@ -71,14 +71,16 @@ describe("BackedToken", function () {
 
   it("Mint", async function () {
     await token.setMinter(minter.address);
-    const recipt = await (
+    const receipt = await (
       await token.connect(minter.signer).mint(tmpAccount.address, 100)
     ).wait();
 
-    expect(recipt.events?.[0].event).to.equal("Transfer");
-    expect(recipt.events?.[0].args?.[0]).to.equal(ethers.constants.AddressZero);
-    expect(recipt.events?.[0].args?.[1]).to.equal(tmpAccount.address);
-    expect(recipt.events?.[0].args?.[2]).to.equal(100);
+    expect(receipt.events?.[0].event).to.equal("Transfer");
+    expect(receipt.events?.[0].args?.[0]).to.equal(
+      ethers.constants.AddressZero
+    );
+    expect(receipt.events?.[0].args?.[1]).to.equal(tmpAccount.address);
+    expect(receipt.events?.[0].args?.[2]).to.equal(100);
     expect(await token.balanceOf(tmpAccount.address)).to.equal(100);
   });
 
@@ -91,15 +93,15 @@ describe("BackedToken", function () {
 
   it("Define Burner and transfer Burner", async function () {
     // Set Burner
-    let recipt = await (await token.setBurner(burner.address)).wait();
-    expect(recipt.events?.[0].event).to.equal("NewBurner");
-    expect(recipt.events?.[0].args?.[0]).to.equal(burner.address);
+    let receipt = await (await token.setBurner(burner.address)).wait();
+    expect(receipt.events?.[0].event).to.equal("NewBurner");
+    expect(receipt.events?.[0].args?.[0]).to.equal(burner.address);
     expect(await token.burner()).to.equal(burner.address);
 
     // Change Burner
-    recipt = await (await token.setBurner(tmpAccount.address)).wait();
-    expect(recipt.events?.[0].event).to.equal("NewBurner");
-    expect(recipt.events?.[0].args?.[0]).to.equal(tmpAccount.address);
+    receipt = await (await token.setBurner(tmpAccount.address)).wait();
+    expect(receipt.events?.[0].event).to.equal("NewBurner");
+    expect(receipt.events?.[0].args?.[0]).to.equal(tmpAccount.address);
   });
 
   it("Try to define Burner from wrong address", async function () {
@@ -112,14 +114,16 @@ describe("BackedToken", function () {
     await token.setMinter(minter.address);
     await token.connect(minter.signer).mint(burner.address, 100);
     await token.setBurner(burner.address);
-    const recipt = await (
+    const receipt = await (
       await token.connect(burner.signer).burn(burner.address, 10)
     ).wait();
 
-    expect(recipt.events?.[0].event).to.equal("Transfer");
-    expect(recipt.events?.[0].args?.[0]).to.equal(burner.address);
-    expect(recipt.events?.[0].args?.[1]).to.equal(ethers.constants.AddressZero);
-    expect(recipt.events?.[0].args?.[2]).to.equal(10);
+    expect(receipt.events?.[0].event).to.equal("Transfer");
+    expect(receipt.events?.[0].args?.[0]).to.equal(burner.address);
+    expect(receipt.events?.[0].args?.[1]).to.equal(
+      ethers.constants.AddressZero
+    );
+    expect(receipt.events?.[0].args?.[2]).to.equal(10);
     expect(await token.balanceOf(burner.address)).to.equal(90);
   });
 
@@ -127,14 +131,16 @@ describe("BackedToken", function () {
     await token.setMinter(minter.address);
     await token.connect(minter.signer).mint(token.address, 100);
     await token.setBurner(burner.address);
-    const recipt = await (
+    const receipt = await (
       await token.connect(burner.signer).burn(token.address, 10)
     ).wait();
 
-    expect(recipt.events?.[0].event).to.equal("Transfer");
-    expect(recipt.events?.[0].args?.[0]).to.equal(token.address);
-    expect(recipt.events?.[0].args?.[1]).to.equal(ethers.constants.AddressZero);
-    expect(recipt.events?.[0].args?.[2]).to.equal(10);
+    expect(receipt.events?.[0].event).to.equal("Transfer");
+    expect(receipt.events?.[0].args?.[0]).to.equal(token.address);
+    expect(receipt.events?.[0].args?.[1]).to.equal(
+      ethers.constants.AddressZero
+    );
+    expect(receipt.events?.[0].args?.[2]).to.equal(10);
     expect(await token.balanceOf(token.address)).to.equal(90);
   });
 
@@ -177,7 +183,7 @@ describe("BackedToken", function () {
     expect(await token.DOMAIN_SEPARATOR()).to.equal(domainSeparator);
   });
 
-  it("ERC712 TypeHashs", async function () {
+  it("ERC712 TypeHashes", async function () {
     // Check Permit TypeHash:
     const permitTypehash = ethers.utils.keccak256(
       ethers.utils.toUtf8Bytes(
@@ -252,11 +258,11 @@ describe("BackedToken", function () {
       splitSig.r,
       splitSig.s
     );
-    const recipt = await tx.wait();
-    expect(recipt.events?.[0].event).to.equal("Approval");
-    expect(recipt.events?.[0].args?.[0]).to.equal(tmpAccount.address);
-    expect(recipt.events?.[0].args?.[1]).to.equal(minter.address);
-    expect(recipt.events?.[0].args?.[2]).to.equal(100);
+    const receipt = await tx.wait();
+    expect(receipt.events?.[0].event).to.equal("Approval");
+    expect(receipt.events?.[0].args?.[0]).to.equal(tmpAccount.address);
+    expect(receipt.events?.[0].args?.[1]).to.equal(minter.address);
+    expect(receipt.events?.[0].args?.[2]).to.equal(100);
     expect(await token.allowance(tmpAccount.address, minter.address)).to.equal(
       100
     );
@@ -279,11 +285,11 @@ describe("BackedToken", function () {
         splitSig2.r,
         splitSig2.s
       );
-    const recipt2 = await tx2.wait();
-    expect(recipt2.events?.[0].event).to.equal("Approval");
-    expect(recipt2.events?.[0].args?.[0]).to.equal(tmpAccount.address);
-    expect(recipt2.events?.[0].args?.[1]).to.equal(minter.address);
-    expect(recipt2.events?.[0].args?.[2]).to.equal(150);
+    const receipt2 = await tx2.wait();
+    expect(receipt2.events?.[0].event).to.equal("Approval");
+    expect(receipt2.events?.[0].args?.[0]).to.equal(tmpAccount.address);
+    expect(receipt2.events?.[0].args?.[1]).to.equal(minter.address);
+    expect(receipt2.events?.[0].args?.[2]).to.equal(150);
     expect(await token.allowance(tmpAccount.address, minter.address)).to.equal(
       150
     );
@@ -319,7 +325,7 @@ describe("BackedToken", function () {
       deadline: ethers.constants.MaxUint256,
     };
 
-    // Sign delegate tranfer:
+    // Sign delegate transfer:
     const signer = await ethers.getSigner(tmpAccount.address);
     const sig = await signer._signTypedData(domain, types, msg);
     const splitSig = ethers.utils.splitSignature(sig);
@@ -348,11 +354,11 @@ describe("BackedToken", function () {
       splitSig.r,
       splitSig.s
     );
-    const recipt = await tx.wait();
-    expect(recipt.events?.[0].event).to.equal("Transfer");
-    expect(recipt.events?.[0].args?.[0]).to.equal(tmpAccount.address);
-    expect(recipt.events?.[0].args?.[1]).to.equal(minter.address);
-    expect(recipt.events?.[0].args?.[2]).to.equal(100);
+    const receipt = await tx.wait();
+    expect(receipt.events?.[0].event).to.equal("Transfer");
+    expect(receipt.events?.[0].args?.[0]).to.equal(tmpAccount.address);
+    expect(receipt.events?.[0].args?.[1]).to.equal(minter.address);
+    expect(receipt.events?.[0].args?.[2]).to.equal(100);
     expect(await token.balanceOf(tmpAccount.address)).to.equal(400);
     expect(await token.balanceOf(minter.address)).to.equal(100);
 
@@ -374,11 +380,11 @@ describe("BackedToken", function () {
         splitSig2.r,
         splitSig2.s
       );
-    const recipt2 = await tx2.wait();
-    expect(recipt2.events?.[0].event).to.equal("Transfer");
-    expect(recipt2.events?.[0].args?.[0]).to.equal(tmpAccount.address);
-    expect(recipt2.events?.[0].args?.[1]).to.equal(minter.address);
-    expect(recipt2.events?.[0].args?.[2]).to.equal(200);
+    const receipt2 = await tx2.wait();
+    expect(receipt2.events?.[0].event).to.equal("Transfer");
+    expect(receipt2.events?.[0].args?.[0]).to.equal(tmpAccount.address);
+    expect(receipt2.events?.[0].args?.[1]).to.equal(minter.address);
+    expect(receipt2.events?.[0].args?.[2]).to.equal(200);
     expect(await token.balanceOf(tmpAccount.address)).to.equal(200);
     expect(await token.balanceOf(minter.address)).to.equal(300);
   });
