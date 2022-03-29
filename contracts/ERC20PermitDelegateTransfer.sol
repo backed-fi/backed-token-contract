@@ -30,7 +30,7 @@ contract ERC20PermitDelegateTransfer is ERC20 {
 
     // Immutable variable for Domain Separator:
     // solhint-disable-next-line var-name-mixedcase
-    bytes32 public immutable DOMAIN_SEPARATOR;
+    bytes32 public DOMAIN_SEPARATOR;
 
     // A version number:
     string internal constant VERSION = "1";
@@ -42,15 +42,7 @@ contract ERC20PermitDelegateTransfer is ERC20 {
      * Calculate the DOMAIN_SEPARATOR structHash:
      */
     constructor(string memory name_, string memory symbol_) ERC20(name_, symbol_) {
-        DOMAIN_SEPARATOR = keccak256(
-            abi.encode(
-                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-                keccak256(bytes(name())),
-                keccak256(bytes(VERSION)),
-                block.chainid,
-                address(this)
-            )
-        );
+        _buildDomainSeparator();
     }
 
     /**
@@ -107,5 +99,17 @@ contract ERC20PermitDelegateTransfer is ERC20 {
     function _useNonce(address owner) internal virtual returns (uint256 current) {
         current = nonces[owner];
         nonces[owner]++;
+    }
+
+    function _buildDomainSeparator() internal {
+        DOMAIN_SEPARATOR = keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                keccak256(bytes(name())),
+                keccak256(bytes(VERSION)),
+                block.chainid,
+                address(this)
+            )
+        );
     }
 }

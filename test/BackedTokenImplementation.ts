@@ -1,8 +1,8 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import { BigNumber, Signer } from "ethers";
 // eslint-disable-next-line node/no-missing-import
-import { BackedToken } from "../typechain";
+import { BackedTokenImplementation } from "../typechain";
 
 type SignerWithAddress = {
   signer: Signer;
@@ -11,7 +11,7 @@ type SignerWithAddress = {
 
 describe("BackedToken", function () {
   // General config:
-  let token: BackedToken;
+  let token: BackedTokenImplementation;
   let accounts: Signer[];
 
   // Basic config:
@@ -26,8 +26,16 @@ describe("BackedToken", function () {
 
   beforeEach(async () => {
     // Deploy contract:
-    const Token = await ethers.getContractFactory("BackedToken");
-    token = await Token.deploy(tokenName, tokenSymbol);
+    const BackedTokenImplementation = await ethers.getContractFactory(
+      "BackedTokenImplementation"
+    );
+    upgrades.silenceWarnings();
+    const untypedToken = await upgrades.deployProxy(
+      BackedTokenImplementation,
+      [tokenName, tokenSymbol],
+      { unsafeAllow: ["constructor"] }
+    );
+    token = untypedToken as BackedTokenImplementation;
     await token.deployed();
 
     // Get accounts:

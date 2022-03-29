@@ -18,7 +18,11 @@ import "./ERC20PermitDelegateTransfer.sol";
  * 
  */
 
-contract BackedToken is Ownable, ERC20PermitDelegateTransfer {
+contract BackedTokenImplementation is Ownable, ERC20PermitDelegateTransfer {
+    // ERC20:
+    string private _name;
+    string private _symbol;
+
     // Roles:
     address public minter;
     address public burner;
@@ -30,6 +34,9 @@ contract BackedToken is Ownable, ERC20PermitDelegateTransfer {
 
     // Pause:
     bool public isPaused;
+
+    // Initialized:
+    bool private _initialized;
 
     // Events:
     event NewMinter(address indexed newMinter);
@@ -44,7 +51,33 @@ contract BackedToken is Ownable, ERC20PermitDelegateTransfer {
         _;
     }
 
-    constructor (string memory name_, string memory symbol_) ERC20PermitDelegateTransfer(name_, symbol_) {}
+    constructor () ERC20PermitDelegateTransfer("Backed Token Implementation", "BTI") {
+        initialize("Backed Token Implementation", "BTI");
+    }
+
+    function initialize(string memory name_, string memory symbol_) public {
+        require(!_initialized, "BackedToken: Already initialized");
+        _name = name_;
+        _symbol = symbol_;
+        _transferOwnership(_msgSender());
+        _buildDomainSeparator();
+        _initialized = true;
+    }
+
+    /**
+     * @dev Returns the name of the token.
+     */
+    function name() public view virtual override returns (string memory) {
+        return _name;
+    }
+
+    /**
+     * @dev Returns the symbol of the token, usually a shorter version of the
+     * name.
+     */
+    function symbol() public view virtual override returns (string memory) {
+        return _symbol;
+    }
 
     // Permit, uses super, allowed only if delegationMode is true, or if the relayer is whitelisted:    
     function permit(
