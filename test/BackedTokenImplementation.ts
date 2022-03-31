@@ -348,6 +348,21 @@ describe("BackedToken", function () {
     expect(await token.allowance(tmpAccount.address, minter.address)).to.equal(
       150
     );
+
+    // Replay msg should fail:
+    await expect(
+      token
+        .connect(minter.signer)
+        .permit(
+          tmpAccount.address,
+          minter.address,
+          150,
+          ethers.constants.MaxUint256,
+          splitSig2.v,
+          splitSig2.r,
+          splitSig2.s
+        )
+    ).to.revertedWith("ERC20Permit: invalid signature");
   });
 
   it("Delegate Transfer ERC712 test", async function () {
@@ -442,5 +457,20 @@ describe("BackedToken", function () {
     expect(receipt2.events?.[0].args?.[2]).to.equal(200);
     expect(await token.balanceOf(tmpAccount.address)).to.equal(200);
     expect(await token.balanceOf(minter.address)).to.equal(300);
+
+    // Replay msg should fail:
+    await expect(
+      token
+        .connect(minter.signer)
+        .delegatedTransfer(
+          tmpAccount.address,
+          minter.address,
+          150,
+          ethers.constants.MaxUint256,
+          splitSig2.v,
+          splitSig2.r,
+          splitSig2.s
+        )
+    ).to.revertedWith("ERC20Permit: invalid signature");
   });
 });
