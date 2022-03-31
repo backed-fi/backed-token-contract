@@ -3,8 +3,8 @@
 
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/cryptography/ECDSAUpgradeable.sol";
 
 /**
  * @dev 
@@ -17,7 +17,7 @@ import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
  *
 */
 
-contract ERC20PermitDelegateTransfer is ERC20 {
+contract ERC20PermitDelegateTransfer is ERC20Upgradeable {
     mapping(address => uint256) private nonces;
 
     // Calculating the Permit typehash:
@@ -35,16 +35,6 @@ contract ERC20PermitDelegateTransfer is ERC20 {
     // A version number:
     string internal constant VERSION = "1";
 
-
-    /**
-     * @dev
-     *
-     * Calculate the DOMAIN_SEPARATOR structHash:
-     */
-    constructor(string memory name_, string memory symbol_) ERC20(name_, symbol_) {
-        _buildDomainSeparator();
-    }
-
     /**
      * @dev Permit, approve via a sign message, using erc712.
      */
@@ -61,9 +51,9 @@ contract ERC20PermitDelegateTransfer is ERC20 {
 
         bytes32 structHash = keccak256(abi.encode(PERMIT_TYPEHASH, owner, spender, value, _useNonce(owner), deadline));
 
-        bytes32 hash = ECDSA.toTypedDataHash(DOMAIN_SEPARATOR, structHash);
+        bytes32 hash = ECDSAUpgradeable.toTypedDataHash(DOMAIN_SEPARATOR, structHash);
 
-        address signer = ECDSA.recover(hash, v, r, s);
+        address signer = ECDSAUpgradeable.recover(hash, v, r, s);
         require(signer == owner, "ERC20Permit: invalid signature");
 
         _approve(owner, spender, value);
@@ -85,9 +75,9 @@ contract ERC20PermitDelegateTransfer is ERC20 {
 
         bytes32 structHash = keccak256(abi.encode(DELEGATED_TRANSFER_TYPEHASH, owner, to, value, _useNonce(owner), deadline));
 
-        bytes32 hash = ECDSA.toTypedDataHash(DOMAIN_SEPARATOR, structHash);
+        bytes32 hash = ECDSAUpgradeable.toTypedDataHash(DOMAIN_SEPARATOR, structHash);
 
-        address signer = ECDSA.recover(hash, v, r, s);
+        address signer = ECDSAUpgradeable.recover(hash, v, r, s);
         require(signer == owner, "ERC20Permit: invalid signature");
 
         _transfer(owner, to, value);

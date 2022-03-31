@@ -1,7 +1,7 @@
 //SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "./ERC20PermitDelegateTransfer.sol";
 
 /**
@@ -18,11 +18,7 @@ import "./ERC20PermitDelegateTransfer.sol";
  * 
  */
 
-contract BackedTokenImplementation is Ownable, ERC20PermitDelegateTransfer {
-    // ERC20:
-    string private _name;
-    string private _symbol;
-
+contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTransfer {
     // Roles:
     address public minter;
     address public burner;
@@ -34,9 +30,6 @@ contract BackedTokenImplementation is Ownable, ERC20PermitDelegateTransfer {
 
     // Pause:
     bool public isPaused;
-
-    // Initialized:
-    bool private _initialized;
 
     // Events:
     event NewMinter(address indexed newMinter);
@@ -51,32 +44,17 @@ contract BackedTokenImplementation is Ownable, ERC20PermitDelegateTransfer {
         _;
     }
 
-    constructor () ERC20PermitDelegateTransfer("Backed Token Implementation", "BTI") {
+
+    // constructor, call initializer to lock the implementation instance.
+    constructor () {
         initialize("Backed Token Implementation", "BTI");
     }
 
-    function initialize(string memory name_, string memory symbol_) public {
-        require(!_initialized, "BackedToken: Already initialized");
-        _name = name_;
-        _symbol = symbol_;
-        _transferOwnership(_msgSender());
+    // initialize, call initializer to lock the implementation instance.
+    function initialize(string memory name_, string memory symbol_) public initializer {
+        __ERC20_init(name_, symbol_);
+        __Ownable_init();
         _buildDomainSeparator();
-        _initialized = true;
-    }
-
-    /**
-     * @dev Returns the name of the token.
-     */
-    function name() public view virtual override returns (string memory) {
-        return _name;
-    }
-
-    /**
-     * @dev Returns the symbol of the token, usually a shorter version of the
-     * name.
-     */
-    function symbol() public view virtual override returns (string memory) {
-        return _symbol;
     }
 
     // Permit, uses super, allowed only if delegationMode is true, or if the relayer is whitelisted:    
