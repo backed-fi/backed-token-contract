@@ -139,8 +139,8 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
         address to,
         uint256 amount
     ) internal virtual override {
-        super._beforeTokenTransfer(from, to, amount);
-
         require(!isPaused, "BackedToken: token transfer while paused");
+
+        super._beforeTokenTransfer(from, to, amount);
     }
 }
