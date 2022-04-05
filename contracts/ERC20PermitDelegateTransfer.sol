@@ -51,10 +51,7 @@ contract ERC20PermitDelegateTransfer is ERC20Upgradeable {
 
         bytes32 structHash = keccak256(abi.encode(PERMIT_TYPEHASH, owner, spender, value, _useNonce(owner), deadline));
 
-        bytes32 hash = ECDSAUpgradeable.toTypedDataHash(DOMAIN_SEPARATOR, structHash);
-
-        address signer = ECDSAUpgradeable.recover(hash, v, r, s);
-        require(signer == owner, "ERC20Permit: invalid signature");
+        _checkOwner(owner, structHash, v, r, s);
 
         _approve(owner, spender, value);
     }
@@ -75,10 +72,7 @@ contract ERC20PermitDelegateTransfer is ERC20Upgradeable {
 
         bytes32 structHash = keccak256(abi.encode(DELEGATED_TRANSFER_TYPEHASH, owner, to, value, _useNonce(owner), deadline));
 
-        bytes32 hash = ECDSAUpgradeable.toTypedDataHash(DOMAIN_SEPARATOR, structHash);
-
-        address signer = ECDSAUpgradeable.recover(hash, v, r, s);
-        require(signer == owner, "ERC20Permit: invalid signature");
+        _checkOwner(owner, structHash, v, r, s);
 
         _transfer(owner, to, value);
     }
@@ -89,6 +83,13 @@ contract ERC20PermitDelegateTransfer is ERC20Upgradeable {
     function _useNonce(address owner) internal virtual returns (uint256 current) {
         current = nonces[owner];
         nonces[owner]++;
+    }
+
+    function _checkOwner(address owner, bytes32 structHash, uint8 v, bytes32 r, bytes32 s) internal view {
+        bytes32 hash = ECDSAUpgradeable.toTypedDataHash(DOMAIN_SEPARATOR, structHash);
+
+        address signer = ECDSAUpgradeable.recover(hash, v, r, s);
+        require(signer == owner, "ERC20Permit: invalid signature");
     }
 
     function _buildDomainSeparator() internal {
