@@ -473,4 +473,34 @@ describe("BackedToken", function () {
         )
     ).to.revertedWith("ERC20Permit: invalid signature");
   });
+
+  it("Should be upgradable", async () => {
+    const nameBefore = await token.name();
+    const ownerBefore = await token.owner();
+    const minterBefore = await token.minter();
+
+    // Check that we cannot mint if we are not minter (not upgraded)
+    await expect(token.mint(owner.address, 100)).to.revertedWith(
+      "BackedToken: Only minter"
+    );
+
+    const BackedTokenImplementation = await ethers.getContractFactory(
+      "BackedTokenImplementationUpgraded"
+    );
+
+    const upgradedContract = (await (
+      await upgrades.upgradeProxy(token.address, BackedTokenImplementation)
+    ).deployed()) as BackedTokenImplementation;
+
+    // Check that we for mint, even if we are not minter (upgraded)
+    const receipt = await (await token.mint(owner.address, 100)).wait();
+
+    // Expect for tokens to be minted
+    expect(receipt.events?.[0].event).to.equal("Transfer");
+
+    // Check the contract integrity
+    expect(nameBefore).to.equal(await upgradedContract.name());
+    expect(ownerBefore).to.equal(await upgradedContract.owner());
+    expect(minterBefore).to.equal(await upgradedContract.minter());
+  });
 });
