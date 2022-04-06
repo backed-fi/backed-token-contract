@@ -196,6 +196,10 @@ describe("BackedToken", function () {
     await token.connect(minter.signer).mint(owner.address, 100);
     await token.setPauser(pauser.address);
 
+    await expect(token.connect(accounts[2]).setPause(true)).to.be.revertedWith(
+      "BackedToken: Only pauser"
+    );
+
     const receipt = await (
       await token.connect(pauser.signer).setPause(true)
     ).wait();
@@ -304,6 +308,21 @@ describe("BackedToken", function () {
 
     // Whitelist an address and relay signature:
     await token.setDelegationWhitelist(owner.address, true);
+
+    await expect(
+      token.permit(
+        tmpAccount.address,
+        minter.address,
+        100,
+        (
+          await ethers.provider.getBlock(await ethers.provider.getBlockNumber())
+        ).timestamp, // deadline in the past
+        splitSig.v,
+        splitSig.r,
+        splitSig.s
+      )
+    ).to.revertedWith("ERC20Permit: expired deadline");
+
     const tx = await token.permit(
       tmpAccount.address,
       minter.address,
@@ -415,6 +434,21 @@ describe("BackedToken", function () {
 
     // Whitelist an address and relay signature:
     await token.setDelegationWhitelist(owner.address, true);
+
+    await expect(
+      token.delegatedTransfer(
+        tmpAccount.address,
+        minter.address,
+        100,
+        (
+          await ethers.provider.getBlock(await ethers.provider.getBlockNumber())
+        ).timestamp, // deadline in the past
+        splitSig.v,
+        splitSig.r,
+        splitSig.s
+      )
+    ).to.revertedWith("ERC20Permit: expired deadline");
+
     const tx = await token.delegatedTransfer(
       tmpAccount.address,
       minter.address,
