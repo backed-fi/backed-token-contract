@@ -13,12 +13,12 @@ import "@openzeppelin/contracts-upgradeable/utils/cryptography/ECDSAUpgradeable.
  * 
  * The changes are:
  *  - Adding also delegated transfer functionality, that is similar to permit, but doing the actual transfer and not approval.
- *  - Cutting some of the generalities to make the contacts more stright forward for this case (e.g. removing the counters library). 
+ *  - Cutting some of the generalities to make the contacts more straight forward for this case (e.g. removing the counters library). 
  *
 */
 
 contract ERC20PermitDelegateTransfer is ERC20Upgradeable {
-    mapping(address => uint256) private nonces;
+    mapping(address => uint256) public nonces;
 
     // Calculating the Permit typehash:
     bytes32 public constant PERMIT_TYPEHASH =
