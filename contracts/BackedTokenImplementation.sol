@@ -31,6 +31,11 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
     // Pause:
     bool public isPaused;
 
+    // Minting delay:
+    uint public mintingAllowance;
+    uint public allowanceChangedTimestamp;
+    uint private constant MINTING_DELAY = 24*60*60;
+
     // Events:
     event NewMinter(address indexed newMinter);
     event NewBurner(address indexed newBurner);
@@ -38,6 +43,7 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
     event DelegationWhitelistChange(address indexed whitelistAddress, bool status);
     event DelegationModeChange(bool delegationMode);
     event PauseModeChange(bool pauseMode);
+    event NewMintAllowance(uint amount);
     
     modifier allowedDelegation {
         require(delegateMode || delegateWhitelist[_msgSender()], "BackedToken: Unauthorized delegate");
@@ -86,7 +92,18 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
     // Mint new tokens, only allowed for minter:
     function mint(address account, uint256 amount) public {
         require(_msgSender() == minter, "BackedToken: Only minter");
+        require(block.timestamp > allowanceChangedTimestamp + MINTING_DELAY, "BackedToken: Minting time delay");
+        require(mintingAllowance >= amount, "BackedToken: Minting allowance too low");
+        mintingAllowance -= amount;
         _mint(account, amount);
+    }
+
+    // Change minting allowance, only allowed for minter:
+    function setMintAllowance(uint256 amount) public {
+        require(_msgSender() == minter, "BackedToken: Only minter");
+        mintingAllowance = amount;
+        allowanceChangedTimestamp = block.timestamp;
+        emit NewMintAllowance(amount);
     }
 
     // Burn tokens from msg.sender account, or from the contract itself. Only allowed for burner:

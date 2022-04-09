@@ -54,6 +54,12 @@ describe("BackedToken", function () {
     chainId = BigNumber.from(network.chainId);
   });
 
+  const prepMintingAllowance = async (amount: any) => {
+    await token.setMinter(minter.address);
+    await token.connect(minter.signer).setMintAllowance(amount);
+    await ethers.provider.send("evm_increaseTime", [60 * 60 * 25]);
+  };
+
   it("Basic information check", async function () {
     expect(await token.name()).to.equal(tokenName);
     expect(await token.symbol()).to.equal(tokenSymbol);
@@ -79,8 +85,25 @@ describe("BackedToken", function () {
     ).to.be.revertedWith("Ownable: caller is not the owner");
   });
 
-  it("Mint", async function () {
+  it("Minting allowance", async function () {
     await token.setMinter(minter.address);
+    const receipt = await (
+      await token.connect(minter.signer).setMintAllowance(100)
+    ).wait();
+    expect(receipt.events?.[0].event).to.equal("NewMintAllowance");
+    expect(receipt.events?.[0].args?.[0]).to.equal(100);
+    expect(await token.mintingAllowance()).to.equal(100);
+  });
+
+  it("Try to set minting allowance from unauthorized account", async function () {
+    await token.setMinter(minter.address);
+    await expect(token.setMintAllowance(100)).to.revertedWith(
+      "BackedToken: Only minter"
+    );
+  });
+
+  it("Mint", async function () {
+    await prepMintingAllowance(100);
     const receipt = await (
       await token.connect(minter.signer).mint(tmpAccount.address, 100)
     ).wait();
@@ -99,6 +122,29 @@ describe("BackedToken", function () {
     await expect(token.mint(tmpAccount.address, 100)).to.revertedWith(
       "BackedToken: Only minter"
     );
+  });
+
+  it("Try to set minting allowance from unauthorized account", async function () {
+    await token.setMinter(minter.address);
+    await token.connect(minter.signer).setMintAllowance(100);
+    await expect(token.mint(tmpAccount.address, 50)).to.revertedWith(
+      "BackedToken: Only minter"
+    );
+  });
+
+  it("Try to mint before time buffer", async function () {
+    await token.setMinter(minter.address);
+    await token.connect(minter.signer).setMintAllowance(100);
+    await expect(
+      token.connect(minter.signer).mint(tmpAccount.address, 100)
+    ).to.revertedWith("BackedToken: Minting time delay");
+  });
+
+  it("Try to mint more than allowance", async function () {
+    await prepMintingAllowance(100);
+    await expect(
+      token.connect(minter.signer).mint(tmpAccount.address, 150)
+    ).to.revertedWith("BackedToken: Minting allowance too low");
   });
 
   it("Define Burner and transfer Burner", async function () {
@@ -121,7 +167,7 @@ describe("BackedToken", function () {
   });
 
   it("Burn", async function () {
-    await token.setMinter(minter.address);
+    await prepMintingAllowance(100);
     await token.connect(minter.signer).mint(burner.address, 100);
     await token.setBurner(burner.address);
     const receipt = await (
@@ -138,7 +184,7 @@ describe("BackedToken", function () {
   });
 
   it("Burn from the token contract balance", async function () {
-    await token.setMinter(minter.address);
+    await prepMintingAllowance(100);
     await token.connect(minter.signer).mint(token.address, 100);
     await token.setBurner(burner.address);
     const receipt = await (
@@ -155,7 +201,7 @@ describe("BackedToken", function () {
   });
 
   it("Try to burn funds of another account", async function () {
-    await token.setMinter(minter.address);
+    await prepMintingAllowance(100);
     await token.setBurner(burner.address);
     await token.connect(minter.signer).mint(tmpAccount.address, 100);
     await expect(
@@ -164,7 +210,7 @@ describe("BackedToken", function () {
   });
 
   it("Try to burn from unauthorized account", async function () {
-    await token.setMinter(minter.address);
+    await prepMintingAllowance(100);
     await token.setBurner(burner.address);
     await token.connect(minter.signer).mint(tmpAccount.address, 100);
     await expect(token.burn(tmpAccount.address, 100)).to.revertedWith(
@@ -192,7 +238,7 @@ describe("BackedToken", function () {
   });
 
   it("Pause and Unpause", async function () {
-    await token.setMinter(minter.address);
+    await prepMintingAllowance(100);
     await token.connect(minter.signer).mint(owner.address, 100);
     await token.setPauser(pauser.address);
 
@@ -386,7 +432,7 @@ describe("BackedToken", function () {
 
   it("Delegate Transfer ERC712 test", async function () {
     // Mint tokens:
-    await token.setMinter(minter.address);
+    await prepMintingAllowance(500);
     token.connect(minter.signer).mint(tmpAccount.address, 500);
 
     const domain = {
