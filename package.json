@@ -7,7 +7,7 @@
     "compile": "hardhat compile",
     "test": "hardhat test",
     "coverage": "hardhat coverage",
-    "lint": "solhint ./contracts/** && eslint ./test/**"
+    "lint": "solhint ./contracts/**/*.sol && eslint ./test/**"
   },
   "author": "adam@backed.fi",
   "license": "ISC",
