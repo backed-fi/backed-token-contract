@@ -1,7 +1,7 @@
 /**
  * SPDX-License-Identifier: MIT
  *
- * Copyright (c) 2021-2022 Backed
+ * Copyright (c) 2021-2022 Backed Finance AG
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -176,7 +176,7 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
      * @param newMinter The address of the new minter
      */
     function setMinter(address newMinter) external onlyOwner {
-        require(newMinter != address(0), "BackedToken: Minter address must be provided");
+        require(newMinter != address(0), "BackedToken: address should not be 0");
 
         minter = newMinter;
         emit NewMinter(newMinter);
@@ -190,7 +190,7 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
      * @param newBurner The address of the new burner
      */
     function setBurner(address newBurner) external onlyOwner {
-        require(newBurner != address(0), "BackedToken: Burner address must be provided");
+        require(newBurner != address(0), "BackedToken: address should not be 0");
 
         burner = newBurner;
         emit NewBurner(newBurner);
@@ -204,7 +204,7 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
      * @param newPauser The address of the new pauser
      */
     function setPauser(address newPauser) external onlyOwner {
-        require(newPauser != address(0), "BackedToken: Pauser address must be provided");
+        require(newPauser != address(0), "BackedToken: address should not be 0");
 
         pauser = newPauser;
         emit NewPauser(newPauser);
