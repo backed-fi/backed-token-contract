@@ -31,13 +31,13 @@ import "./ERC20PermitDelegateTransfer.sol";
  * @dev
  *
  * This token contract is following the ERC20 standard.
- * It inherits ERC20PermitDelegateTransfer.sol, which extends the basic ERC20 to also allow permit and delegateTransfer ERC712 functionality.
+ * It inherits ERC20PermitDelegateTransfer.sol, which extends the basic ERC20 to also allow permit and delegateTransfer EIP-712 functionality.
  * The contract contains three roles:
  *  - A minter, that can mint new tokens.
  *  - A burner, that can burn its own tokens, or contract's tokens.
  *  - A pauser, that can pause or restore all transfers in the contract.
  *  - An owner, that can set the three above.
- * The owner can also set who can use the ERC712 functionality, either specific accounts via a whitelist, or everyone.
+ * The owner can also set who can use the EIP-712 functionality, either specific accounts via a whitelist, or everyone.
  * 
  */
 
@@ -47,7 +47,7 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
     address public burner;
     address public pauser;
 
-    // ERC712 delegation:
+    // EIP-712 Delegate Functionality:
     bool public delegateMode;
     mapping(address => bool) public delegateWhitelist;
 
@@ -58,11 +58,11 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
     event NewMinter(address indexed newMinter);
     event NewBurner(address indexed newBurner);
     event NewPauser(address indexed newPauser);
-    event DelegationWhitelistChange(address indexed whitelistAddress, bool status);
-    event DelegationModeChange(bool delegationMode);
+    event DelegateWhitelistChange(address indexed whitelistAddress, bool status);
+    event DelegateModeChange(bool delegateMode);
     event PauseModeChange(bool pauseMode);
 
-    modifier allowedDelegation {
+    modifier allowedDelegate {
         require(delegateMode || delegateWhitelist[_msgSender()], "BackedToken: Unauthorized delegate");
         _;
     }
@@ -80,7 +80,7 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
         _buildDomainSeparator();
     }
 
-    // Permit, uses super, allowed only if delegationMode is true, or if the relayer is whitelisted:
+    // Permit, uses super, allowed only if delegateMode is true, or if the relayer is whitelisted:
     function permit(
         address owner,
         address spender,
@@ -89,11 +89,11 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) public override allowedDelegation {
+    ) public override allowedDelegate {
         super.permit(owner, spender, value, deadline, v, r, s);
     }
 
-    // Delegated Transfer, uses super, allowed only if delegationMode is true, or if the relayer is whitelisted:
+    // Delegated Transfer, uses super, allowed only if delegateMode is true, or if the relayer is whitelisted:
     function delegatedTransfer(
         address owner,
         address to,
@@ -102,7 +102,7 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) public override allowedDelegation {
+    ) public override allowedDelegate {
         super.delegatedTransfer(owner, to, value, deadline, v, r, s);
     }
 
@@ -128,32 +128,39 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
 
     // Set minter, only owner:
     function setMinter(address newMinter) public onlyOwner {
+        require(newMinter != address(0), "BackedToken: Minter address must be provided");
+
         minter = newMinter;
         emit NewMinter(newMinter);
     }
 
     // Set burner, only owner:
     function setBurner(address newBurner) public onlyOwner {
+        require(newBurner != address(0), "BackedToken: Burner address must be provided");
+
         burner = newBurner;
         emit NewBurner(newBurner);
     }
 
     // Set pauser, only owner:
     function setPauser(address newPauser) public onlyOwner {
+        require(newPauser != address(0), "BackedToken: Pauser address must be provided");
+
         pauser = newPauser;
         emit NewPauser(newPauser);
     }
 
-    // ERC712 set delegation whitelist, only owner:
-    function setDelegationWhitelist(address whitelistAddress, bool status) public onlyOwner {
+    // EIP-712 set delegate whitelist, only owner:
+    function setDelegateWhitelist(address whitelistAddress, bool status) public onlyOwner {
         delegateWhitelist[whitelistAddress] = status;
-        emit DelegationWhitelistChange(whitelistAddress, status);
+        emit DelegateWhitelistChange(whitelistAddress, status);
     }
 
-    // ERC712 set delegation mode, only owner:
-    function setDelegateMode(bool delegationMode) public onlyOwner {
-        delegateMode = delegationMode;
-        emit DelegationModeChange(delegationMode);
+    // EIP-712 set delegate mode, only owner:
+    function setDelegateMode(bool _delegateMode) public onlyOwner {
+        delegateMode = _delegateMode;
+
+        emit DelegateModeChange(_delegateMode);
     }
 
     // Implement the pause functionality:
@@ -172,5 +179,5 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
      * variables without shifting down storage in the inheritance chain.
      * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
      */
-    uint256[47] private __gap;
+    uint256[50] private __gap;
 }
