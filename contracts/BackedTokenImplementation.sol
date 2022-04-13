@@ -1,4 +1,27 @@
-//SPDX-License-Identifier: MIT
+/**
+ * SPDX-License-Identifier: MIT
+ *
+ * Copyright (c) 2021-2022 Backed
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 pragma solidity 0.8.9;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
@@ -26,7 +49,7 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
 
     // ERC712 delegation:
     bool public delegateMode;
-    mapping (address=>bool) public delegateWhitelist;
+    mapping(address => bool) public delegateWhitelist;
 
     // Pause:
     bool public isPaused;
@@ -38,7 +61,7 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
     event DelegationWhitelistChange(address indexed whitelistAddress, bool status);
     event DelegationModeChange(bool delegationMode);
     event PauseModeChange(bool pauseMode);
-    
+
     modifier allowedDelegation {
         require(delegateMode || delegateWhitelist[_msgSender()], "BackedToken: Unauthorized delegate");
         _;
@@ -57,7 +80,7 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
         _buildDomainSeparator();
     }
 
-    // Permit, uses super, allowed only if delegationMode is true, or if the relayer is whitelisted:    
+    // Permit, uses super, allowed only if delegationMode is true, or if the relayer is whitelisted:
     function permit(
         address owner,
         address spender,
@@ -131,7 +154,7 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
     function setDelegateMode(bool delegationMode) public onlyOwner {
         delegateMode = delegationMode;
         emit DelegationModeChange(delegationMode);
-    }   
+    }
 
     // Implement the pause functionality:
     function _beforeTokenTransfer(
@@ -143,4 +166,11 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
 
         super._beforeTokenTransfer(from, to, amount);
     }
+
+    /**
+     * @dev This empty reserved space is put in place to allow future versions to add new
+     * variables without shifting down storage in the inheritance chain.
+     * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
+     */
+    uint256[47] private __gap;
 }

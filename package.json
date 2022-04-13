@@ -10,7 +10,7 @@
     "lint": "solhint ./contracts/** && eslint ./test/**"
   },
   "author": "adam@backed.fi",
-  "license": "ISC",
+  "license": "MIT",
   "devDependencies": {
     "@nomiclabs/hardhat-ethers": "^2.0.5",
     "@nomiclabs/hardhat-etherscan": "^3.0.3",
@@ -45,7 +45,6 @@
     "typescript": "^4.6.2"
   },
   "dependencies": {
-    "@openzeppelin/contracts": "4.5.0",
     "@openzeppelin/contracts-upgradeable": "4.5.2"
   }
 }
