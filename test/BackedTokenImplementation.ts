@@ -79,6 +79,12 @@ describe("BackedToken", function () {
     ).to.be.revertedWith("Ownable: caller is not the owner");
   });
 
+  it("Should not allow address 0 to be set as minter", async () => {
+    await expect(
+      token.setMinter(ethers.constants.AddressZero)
+    ).to.be.revertedWith("BackedToken: Minter address must be provided");
+  });
+
   it("Mint", async function () {
     await token.setMinter(minter.address);
     const receipt = await (
@@ -118,6 +124,12 @@ describe("BackedToken", function () {
     await expect(
       token.connect(accounts[3]).setBurner(burner.address)
     ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
+  it("Should not allow address 0 to be set as burner", async () => {
+    await expect(
+      token.setBurner(ethers.constants.AddressZero)
+    ).to.be.revertedWith("BackedToken: Burner address must be provided");
   });
 
   it("Burn", async function () {
@@ -191,6 +203,12 @@ describe("BackedToken", function () {
     ).to.be.revertedWith("Ownable: caller is not the owner");
   });
 
+  it("Should not allow address 0 to be set as pauser", async () => {
+    await expect(
+      token.setPauser(ethers.constants.AddressZero)
+    ).to.be.revertedWith("BackedToken: Pauser address must be provided");
+  });
+
   it("Pause and Unpause", async function () {
     await token.setMinter(minter.address);
     await token.connect(minter.signer).mint(owner.address, 100);
@@ -221,7 +239,7 @@ describe("BackedToken", function () {
     expect(await token.balanceOf(tmpAccount.address)).to.equal(100);
   });
 
-  it("ERC712 Domain Separator", async function () {
+  it("EIP-712 Domain Separator", async function () {
     const domainSeparator = ethers.utils.keccak256(
       ethers.utils.defaultAbiCoder.encode(
         ["bytes32", "bytes32", "bytes32", "uint256", "address"],
@@ -242,7 +260,7 @@ describe("BackedToken", function () {
     expect(await token.DOMAIN_SEPARATOR()).to.equal(domainSeparator);
   });
 
-  it("ERC712 TypeHashes", async function () {
+  it("EIP-712 TypeHashes", async function () {
     // Check Permit TypeHash:
     const permitTypehash = ethers.utils.keccak256(
       ethers.utils.toUtf8Bytes(
@@ -262,7 +280,7 @@ describe("BackedToken", function () {
     );
   });
 
-  it("Permit ERC712 test", async function () {
+  it("Permit EIP-712 test", async function () {
     const domain = {
       name: tokenName,
       version: "1",
@@ -307,7 +325,7 @@ describe("BackedToken", function () {
     ).to.revertedWith("BackedToken: Unauthorized delegate");
 
     // Whitelist an address and relay signature:
-    await token.setDelegationWhitelist(owner.address, true);
+    await token.setDelegateWhitelist(owner.address, true);
 
     await expect(
       token.permit(
@@ -384,10 +402,10 @@ describe("BackedToken", function () {
     ).to.revertedWith("ERC20Permit: invalid signature");
   });
 
-  it("Delegate Transfer ERC712 test", async function () {
+  it("Delegate Transfer EIP-712 test", async function () {
     // Mint tokens:
     await token.setMinter(minter.address);
-    token.connect(minter.signer).mint(tmpAccount.address, 500);
+    await token.connect(minter.signer).mint(tmpAccount.address, 500);
 
     const domain = {
       name: tokenName,
@@ -433,7 +451,7 @@ describe("BackedToken", function () {
     ).to.revertedWith("BackedToken: Unauthorized delegate");
 
     // Whitelist an address and relay signature:
-    await token.setDelegationWhitelist(owner.address, true);
+    await token.setDelegateWhitelist(owner.address, true);
 
     await expect(
       token.delegatedTransfer(
