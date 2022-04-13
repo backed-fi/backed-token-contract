@@ -73,14 +73,24 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
         initialize("Backed Token Implementation", "BTI");
     }
 
-    // initialize, call initializer to lock the implementation instance.
     function initialize(string memory name_, string memory symbol_) public initializer {
         __ERC20_init(name_, symbol_);
         __Ownable_init();
         _buildDomainSeparator();
     }
 
-    // Permit, uses super, allowed only if delegateMode is true, or if the relayer is whitelisted:
+    /**
+     * @dev Update allowance with a signed permit. Allowed only if
+     *  the sender is whitelisted, or the delegateMode is set to true
+     *
+     * @param owner       Token owner's address (Authorizer)
+     * @param spender     Spender's address
+     * @param value       Amount of allowance
+     * @param deadline    Expiration time, seconds since the epoch
+     * @param v           v part of the signature
+     * @param r           r part of the signature
+     * @param s           s part of the signature
+     */
     function permit(
         address owner,
         address spender,
@@ -93,7 +103,19 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
         super.permit(owner, spender, value, deadline, v, r, s);
     }
 
-    // Delegated Transfer, uses super, allowed only if delegateMode is true, or if the relayer is whitelisted:
+    /**
+     * @dev Perform an intended transfer on one account's behalf, from another account,
+     *  who actually pays fees for the transaction. Allowed only if the sender
+     *  is whitelisted, or the delegateMode is set to true
+     *
+     * @param owner       The account that provided the signature and from which the tokens will be taken
+     * @param to          The account that will receive the tokens
+     * @param value       The amount of tokens to transfer
+     * @param deadline    Expiration time, seconds since the epoch
+     * @param v           v part of the signature
+     * @param r           r part of the signature
+     * @param s           s part of the signature
+     */
     function delegatedTransfer(
         address owner,
         address to,
@@ -106,58 +128,112 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
         super.delegatedTransfer(owner, to, value, deadline, v, r, s);
     }
 
-    // Mint new tokens, only allowed for minter:
-    function mint(address account, uint256 amount) public {
+    /**
+     * @dev Function to mint tokens. Allowed only for minter
+     *
+     * @param account   The address that will receive the minted tokens
+     * @param amount    The amount of tokens to mint
+     */
+    function mint(address account, uint256 amount) external {
         require(_msgSender() == minter, "BackedToken: Only minter");
         _mint(account, amount);
     }
 
-    // Burn tokens from msg.sender account, or from the contract itself. Only allowed for burner:
-    function burn(address account, uint256 amount) public {
+
+    /**
+     * @dev Function to burn tokens. Allowed only for burner. The burned tokens
+     *  must be from the burner (msg.sender), or from the contract itself
+     *
+     * @param account   The account from which the tokens will be burned
+     * @param amount    The amount of tokens to be burned
+     */
+    function burn(address account, uint256 amount) external {
         require(_msgSender() == burner, "BackedToken: Only burner");
         require(account == _msgSender() || account == address(this), "BackedToken: Cannot burn account");
         _burn(account, amount);
     }
 
-    // Set pause, to block or restore all transfers. Only allowed for pauser:
-    function setPause(bool newPauseMode) public {
+
+    /**
+     * @dev Function to set the pause in order to block or restore all
+     *  transfers. Allowed only for pauser
+     *
+     * Emits a { PauseModeChange } event
+     *
+     * @param newPauseMode The new pause mode
+     */
+    function setPause(bool newPauseMode) external {
         require(_msgSender() == pauser, "BackedToken: Only pauser");
         isPaused = newPauseMode;
         emit PauseModeChange(newPauseMode);
     }
 
-    // Set minter, only owner:
-    function setMinter(address newMinter) public onlyOwner {
+    /**
+     * @dev Function to change the contract minter. Allowed only for owner
+     *
+     * Emits a { NewMinter } event
+     *
+     * @param newMinter The address of the new minter
+     */
+    function setMinter(address newMinter) external onlyOwner {
         require(newMinter != address(0), "BackedToken: Minter address must be provided");
 
         minter = newMinter;
         emit NewMinter(newMinter);
     }
 
-    // Set burner, only owner:
-    function setBurner(address newBurner) public onlyOwner {
+    /**
+     * @dev Function to change the contract burner. Allowed only for owner
+     *
+     * Emits a { NewBurner } event
+     *
+     * @param newBurner The address of the new burner
+     */
+    function setBurner(address newBurner) external onlyOwner {
         require(newBurner != address(0), "BackedToken: Burner address must be provided");
 
         burner = newBurner;
         emit NewBurner(newBurner);
     }
 
-    // Set pauser, only owner:
-    function setPauser(address newPauser) public onlyOwner {
+    /**
+     * @dev Function to change the contract pauser. Allowed only for owner
+     *
+     * Emits a { NewPauser } event
+     *
+     * @param newPauser The address of the new pauser
+     */
+    function setPauser(address newPauser) external onlyOwner {
         require(newPauser != address(0), "BackedToken: Pauser address must be provided");
 
         pauser = newPauser;
         emit NewPauser(newPauser);
     }
 
-    // EIP-712 set delegate whitelist, only owner:
-    function setDelegateWhitelist(address whitelistAddress, bool status) public onlyOwner {
+
+    /**
+     * @dev EIP-712 Function to change the delegate status of account.
+     *  Allowed only for owner
+     *
+     * Emits a { DelegateWhitelistChange } event
+     *
+     * @param whitelistAddress  The address for which to change the delegate status
+     * @param status            The new delegate status
+     */
+    function setDelegateWhitelist(address whitelistAddress, bool status) external onlyOwner {
         delegateWhitelist[whitelistAddress] = status;
         emit DelegateWhitelistChange(whitelistAddress, status);
     }
 
-    // EIP-712 set delegate mode, only owner:
-    function setDelegateMode(bool _delegateMode) public onlyOwner {
+    /**
+     * @dev EIP-712 Function to change the contract delegate mode. Allowed
+     *  only for owner
+     *
+     * Emits a { DelegateModeChange } event
+     *
+     * @param _delegateMode The new delegate mode for the contract
+     */
+    function setDelegateMode(bool _delegateMode) external onlyOwner {
         delegateMode = _delegateMode;
 
         emit DelegateModeChange(_delegateMode);
