@@ -82,7 +82,7 @@ describe("BackedToken", function () {
   it("Should not allow address 0 to be set as minter", async () => {
     await expect(
       token.setMinter(ethers.constants.AddressZero)
-    ).to.be.revertedWith("BackedToken: Minter address must be provided");
+    ).to.be.revertedWith("BackedToken: address should not be 0");
   });
 
   it("Mint", async function () {
@@ -129,7 +129,7 @@ describe("BackedToken", function () {
   it("Should not allow address 0 to be set as burner", async () => {
     await expect(
       token.setBurner(ethers.constants.AddressZero)
-    ).to.be.revertedWith("BackedToken: Burner address must be provided");
+    ).to.be.revertedWith("BackedToken: address should not be 0");
   });
 
   it("Burn", async function () {
@@ -206,7 +206,7 @@ describe("BackedToken", function () {
   it("Should not allow address 0 to be set as pauser", async () => {
     await expect(
       token.setPauser(ethers.constants.AddressZero)
-    ).to.be.revertedWith("BackedToken: Pauser address must be provided");
+    ).to.be.revertedWith("BackedToken: address should not be 0");
   });
 
   it("Pause and Unpause", async function () {
