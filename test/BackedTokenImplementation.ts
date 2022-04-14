@@ -1,8 +1,8 @@
 import { expect } from "chai";
-import { ethers, upgrades } from "hardhat";
+import { ethers } from "hardhat";
 import { BigNumber, Signer } from "ethers";
 // eslint-disable-next-line node/no-missing-import
-import { BackedTokenImplementation } from "../typechain";
+import { BackedFactory, BackedTokenImplementation } from "../typechain";
 
 type SignerWithAddress = {
   signer: Signer;
@@ -11,12 +11,14 @@ type SignerWithAddress = {
 
 describe("BackedToken", function () {
   // General config:
+  let tokenFactory: BackedFactory;
   let token: BackedTokenImplementation;
   let accounts: Signer[];
 
   // Basic config:
   const tokenName = "Wrapped Apple";
   const tokenSymbol = "WAAPL";
+
   let owner: SignerWithAddress;
   let minter: SignerWithAddress;
   let burner: SignerWithAddress;
@@ -25,29 +27,46 @@ describe("BackedToken", function () {
   let chainId: BigNumber;
 
   beforeEach(async () => {
-    // Deploy contract:
-    const BackedTokenImplementation = await ethers.getContractFactory(
-      "BackedTokenImplementation"
-    );
-    upgrades.silenceWarnings();
-    const untypedToken = await upgrades.deployProxy(
-      BackedTokenImplementation,
-      [tokenName, tokenSymbol],
-      { unsafeAllow: ["constructor"] }
-    );
-    token = untypedToken as BackedTokenImplementation;
-    await token.deployed();
-
-    // Get accounts:
     accounts = await ethers.getSigners();
-    owner = { signer: accounts[0], address: await accounts[0].getAddress() };
-    minter = { signer: accounts[1], address: await accounts[1].getAddress() };
-    burner = { signer: accounts[2], address: await accounts[2].getAddress() };
-    pauser = { signer: accounts[3], address: await accounts[3].getAddress() };
-    tmpAccount = {
-      signer: accounts[4],
-      address: await accounts[4].getAddress(),
-    };
+
+    const getSigner = async (index: number): Promise<SignerWithAddress> => ({
+      signer: accounts[index],
+      address: await accounts[index].getAddress(),
+    });
+
+    owner = await getSigner(0);
+    minter = await getSigner(1);
+    burner = await getSigner(2);
+    pauser = await getSigner(3);
+    tmpAccount = await getSigner(4);
+
+    // Deploy the token factory
+    tokenFactory = await (
+      await ethers.getContractFactory("BackedFactory")
+    ).deploy(owner.address);
+
+    await tokenFactory.deployed();
+
+    // Deploy contract:
+    const tokenDeploymentReceipt = await (
+      await tokenFactory.deployToken(
+        tokenName,
+        tokenSymbol,
+        owner.address,
+        minter.address,
+        burner.address,
+        pauser.address
+      )
+    ).wait();
+
+    const deployedTokenAddress = tokenDeploymentReceipt.events?.find(
+      (event) => event.event === "NewToken"
+    )?.args?.newToken;
+
+    token = await ethers.getContractAt(
+      "BackedTokenImplementation",
+      deployedTokenAddress
+    );
 
     // Chain Id
     const network = await ethers.provider.getNetwork();
