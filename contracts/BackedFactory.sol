@@ -37,7 +37,7 @@ contract BackedFactory is Ownable {
 
     mapping(address => bool) public deployedTokens;
 
-    event NewToken(address indexed newToken);
+    event NewToken(address indexed newToken, string name, string symbol);
 
     constructor (address proxyAdminOwner) {
         tokenImplementation = new BackedTokenImplementation();
@@ -68,7 +68,7 @@ contract BackedFactory is Ownable {
         newToken.setPauser(pauser);
         newToken.transferOwnership(tokenOwner);
 
-        emit NewToken(address(newToken));
+        emit NewToken(address(newToken), name, symbol);
 
         return (address(newToken));
     }
