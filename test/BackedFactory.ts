@@ -76,8 +76,50 @@ describe("BackedFactory", function () {
     expect(await implementation.symbol(), "BTI");
   });
 
-  it("should not allow 0 address to be assigned to role", () => {
-    // @todo
+  it("should not allow 0 address to be assigned to role", async () => {
+    await expect(
+      factory.deployToken(
+        tokenName,
+        tokenSymbol,
+        ethers.constants.AddressZero,
+        minter.address,
+        burner.address,
+        pauser.address
+      )
+    ).to.revertedWith("BackedFactory: address should not be 0");
+
+    await expect(
+      factory.deployToken(
+        tokenName,
+        tokenSymbol,
+        tokenContractOwner.address,
+        ethers.constants.AddressZero,
+        burner.address,
+        pauser.address
+      )
+    ).to.revertedWith("BackedFactory: address should not be 0");
+
+    await expect(
+      factory.deployToken(
+        tokenName,
+        tokenSymbol,
+        tokenContractOwner.address,
+        minter.address,
+        ethers.constants.AddressZero,
+        pauser.address
+      )
+    ).to.revertedWith("BackedFactory: address should not be 0");
+
+    await expect(
+      factory.deployToken(
+        tokenName,
+        tokenSymbol,
+        tokenContractOwner.address,
+        minter.address,
+        burner.address,
+        ethers.constants.AddressZero
+      )
+    ).to.revertedWith("BackedFactory: address should not be 0");
   });
 
   it("should be able to deploy token", async () => {

@@ -33,7 +33,7 @@ contract BackedFactory is Ownable {
     ProxyAdmin public proxyAdmin;
     BackedTokenImplementation public tokenImplementation;
 
-    mapping (address => bool) public deployedTokens;
+    mapping(address => bool) public deployedTokens;
 
     event NewToken(address indexed newToken);
 
@@ -44,6 +44,9 @@ contract BackedFactory is Ownable {
     }
 
     function deployToken(string memory name, string memory symbol, address tokenOwner, address minter, address burner, address pauser) external onlyOwner returns (address) {
+        require(tokenOwner != address(0) && minter != address(0) && burner != address(0) && pauser != address(0),
+            "BackedFactory: address should not be 0");
+
         bytes32 salt = keccak256(abi.encodePacked(name, symbol));
 
         TransparentUpgradeableProxy newProxy = new TransparentUpgradeableProxy{salt : salt}(
