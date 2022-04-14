@@ -43,23 +43,28 @@ contract BackedFactory is Ownable {
         proxyAdmin.transferOwnership(proxyAdminOwner);
     }
 
-    function deployToken(string memory name, string memory symbol, address tokenOwner, address minter, address burner, address pauser) external onlyOwner returns(address) {
+    function deployToken(string memory name, string memory symbol, address tokenOwner, address minter, address burner, address pauser) external onlyOwner returns (address) {
         bytes32 salt = keccak256(abi.encodePacked(name, symbol));
-        TransparentUpgradeableProxy newProxy = new TransparentUpgradeableProxy{salt: salt}(
+
+        TransparentUpgradeableProxy newProxy = new TransparentUpgradeableProxy{salt : salt}(
             address(tokenImplementation),
             address(proxyAdmin),
-            abi.encodePacked(uint(0))
+            abi.encodeWithSelector(BackedTokenImplementation(address(0)).initialize.selector, name, symbol)
         );
+
         BackedTokenImplementation newToken = BackedTokenImplementation(address(newProxy));
-        require(! deployedTokens[address(newToken)], "Factory: Should'nt deploy same address");
+
+        require(!deployedTokens[address(newToken)], "Factory: Shouldn't deploy same address");
+
         deployedTokens[address(newToken)] = true;
-        newToken.initialize(name, symbol);
+
         newToken.setMinter(minter);
         newToken.setBurner(burner);
         newToken.setPauser(pauser);
         newToken.transferOwnership(tokenOwner);
 
         emit NewToken(address(newToken));
+
         return (address(newToken));
     }
 }
