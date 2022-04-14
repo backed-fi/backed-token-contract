@@ -24,6 +24,8 @@
 
 pragma solidity 0.8.9;
 
+import "hardhat/console.sol";
+
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
@@ -45,7 +47,7 @@ contract BackedFactory is Ownable {
 
     function deployToken(string memory name, string memory symbol, address tokenOwner, address minter, address burner, address pauser) external onlyOwner returns (address) {
         require(tokenOwner != address(0) && minter != address(0) && burner != address(0) && pauser != address(0),
-            "BackedFactory: address should not be 0");
+            "Factory: address should not be 0");
 
         bytes32 salt = keccak256(abi.encodePacked(name, symbol));
 

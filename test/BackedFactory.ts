@@ -86,7 +86,7 @@ describe("BackedFactory", function () {
         burner.address,
         pauser.address
       )
-    ).to.revertedWith("BackedFactory: address should not be 0");
+    ).to.revertedWith("Factory: address should not be 0");
 
     await expect(
       factory.deployToken(
@@ -97,7 +97,7 @@ describe("BackedFactory", function () {
         burner.address,
         pauser.address
       )
-    ).to.revertedWith("BackedFactory: address should not be 0");
+    ).to.revertedWith("Factory: address should not be 0");
 
     await expect(
       factory.deployToken(
@@ -108,7 +108,7 @@ describe("BackedFactory", function () {
         ethers.constants.AddressZero,
         pauser.address
       )
-    ).to.revertedWith("BackedFactory: address should not be 0");
+    ).to.revertedWith("Factory: address should not be 0");
 
     await expect(
       factory.deployToken(
@@ -119,7 +119,7 @@ describe("BackedFactory", function () {
         burner.address,
         ethers.constants.AddressZero
       )
-    ).to.revertedWith("BackedFactory: address should not be 0");
+    ).to.revertedWith("Factory: address should not be 0");
   });
 
   it("should be able to deploy token", async () => {
