@@ -24,7 +24,6 @@
 
 pragma solidity 0.8.9;
 
-import "hardhat/console.sol";
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
@@ -36,7 +35,7 @@ import "./BackedTokenImplementation.sol";
  *
  * Factory contract, used for creating new, upgradable tokens.
  * 
- * The contract contains one rolw:
+ * The contract contains one role:
  *  - An owner, which can deploy new tokens
  *
  */
@@ -65,7 +64,7 @@ contract BackedFactory is Ownable {
      * Emits a { NewToken } event
      * 
      * @param name          The name that the newly created token will have
-     * @param symbol        The symbil that the newly created token will have
+     * @param symbol        The symbol that the newly created token will have
      * @param tokenOwner    The address of the account to which the owner role will be assigned
      * @param minter        The address of the account to which the minter role will be assigned
      * @param burner        The address of the account to which the burner role will be assigned
