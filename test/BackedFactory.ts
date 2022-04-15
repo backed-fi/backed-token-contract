@@ -140,8 +140,10 @@ describe("BackedFactory", function () {
     );
 
     expect(newTokenEvent).not.equal(undefined);
-    expect(newTokenEvent?.args?.length).to.equal(1);
+    expect(newTokenEvent?.args?.length).to.equal(3);
     expect(newTokenEvent?.args?.newToken).to.match(/^0x[a-fA-F\d]{40}$/);
+    expect(newTokenEvent?.args?.name).to.equal(tokenName);
+    expect(newTokenEvent?.args?.symbol).to.equal(tokenSymbol);
   });
 
   it("should not allow non owners to deploy new token", async () => {

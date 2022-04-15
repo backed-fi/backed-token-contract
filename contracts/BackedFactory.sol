@@ -31,20 +31,46 @@ import "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import "./BackedTokenImplementation.sol";
 
+/**
+ * @dev
+ *
+ * Factory contract, used for creating new, upgradable tokens.
+ * 
+ * The contract contains one rolw:
+ *  - An owner, which can deploy new tokens
+ *
+ */
 contract BackedFactory is Ownable {
     ProxyAdmin public proxyAdmin;
     BackedTokenImplementation public tokenImplementation;
 
     mapping(address => bool) public deployedTokens;
 
-    event NewToken(address indexed newToken);
+    event NewToken(address indexed newToken, string name, string symbol);
 
+    /**
+     * @param proxyAdminOwner The address of the account that will be set as owner of the deployed ProxyAdmin
+     */
     constructor (address proxyAdminOwner) {
+        require(proxyAdminOwner != address(0), "Factory: address should not be 0");
+
         tokenImplementation = new BackedTokenImplementation();
         proxyAdmin = new ProxyAdmin();
         proxyAdmin.transferOwnership(proxyAdminOwner);
     }
 
+    /**
+     * @dev Deploy and configures new instance of BackedFi Token. Callable only by the factory owner
+     *
+     * Emits a { NewToken } event
+     * 
+     * @param name          The name that the newly created token will have
+     * @param symbol        The symbil that the newly created token will have
+     * @param tokenOwner    The address of the account to which the owner role will be assigned
+     * @param minter        The address of the account to which the minter role will be assigned
+     * @param burner        The address of the account to which the burner role will be assigned
+     * @param pauser        The address of the account to which the pauser role will be assigned
+     */
     function deployToken(string memory name, string memory symbol, address tokenOwner, address minter, address burner, address pauser) external onlyOwner returns (address) {
         require(tokenOwner != address(0) && minter != address(0) && burner != address(0) && pauser != address(0),
             "Factory: address should not be 0");
@@ -68,7 +94,7 @@ contract BackedFactory is Ownable {
         newToken.setPauser(pauser);
         newToken.transferOwnership(tokenOwner);
 
-        emit NewToken(address(newToken));
+        emit NewToken(address(newToken), name, symbol);
 
         return (address(newToken));
     }
