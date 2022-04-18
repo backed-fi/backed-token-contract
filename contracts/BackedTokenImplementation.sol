@@ -134,7 +134,7 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
      * @param account   The address that will receive the minted tokens
      * @param amount    The amount of tokens to mint
      */
-    function mint(address account, uint256 amount) external {
+    function mint(address account, uint256 amount) virtual external {
         require(_msgSender() == minter, "BackedToken: Only minter");
         _mint(account, amount);
     }
