@@ -30,7 +30,7 @@ import "./BackedTokenImplementation.sol";
  * @dev
  *
  * This contract is extension of the original BackedTokenImplementation
- * but includes mining limits
+ * but includes minting limits
  */
 contract BackedTokenImplementationV2 is BackedTokenImplementation {
     // @notice The amount of tokens that can be minted
