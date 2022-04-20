@@ -548,43 +548,4 @@ describe("BackedToken", function () {
         )
     ).to.revertedWith("ERC20Permit: invalid signature");
   });
-
-  it("should be upgradable", async () => {
-    const nameBefore = await token.name();
-    const ownerBefore = await token.owner();
-    const minterBefore = await token.minter();
-
-    const BackedTokenImplementation = await ethers.getContractFactory(
-      "BackedTokenImplementationV2"
-    );
-
-    await upgrades.forceImport(
-      token.address,
-      await ethers.getContractFactory("BackedTokenImplementation")
-    );
-
-    const upgradedContract = (
-      await (
-        await upgrades.upgradeProxy(
-          token.address,
-          BackedTokenImplementation.connect(owner.signer),
-          {
-            unsafeAllow: ["constructor"],
-          }
-        )
-      ).deployed()
-    ).connect(minter.signer) as BackedTokenImplementationV2;
-
-    // There is now allowance, which by default
-    // should be 0. So if the contract was successfully
-    // upgraded the minting should fail
-    await expect(upgradedContract.mint(minter.address, 1000)).to.revertedWith(
-      "BackedToken: Minting allowance low"
-    );
-
-    // Expect the contract data to be the same as before the upgrade
-    expect(nameBefore).to.equal(await upgradedContract.name());
-    expect(ownerBefore).to.equal(await upgradedContract.owner());
-    expect(minterBefore).to.equal(await upgradedContract.minter());
-  });
 });
