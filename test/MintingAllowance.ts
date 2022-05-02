@@ -67,4 +67,12 @@ describe("v2", () => {
     expect(events?.[0].args?.[1]).to.equal(minter.address);
     expect(events?.[0].args?.[2]).to.equal(500);
   });
+
+  it("should not be able to mint if not minter", async () => {
+    await setMintingAllowance(implementation.connect(minter.signer), 1000);
+
+    await expect(
+      implementation.connect(owner.signer).mint(minter.address, 500)
+    ).to.revertedWith("BackedToken: Only minter");
+  });
 });

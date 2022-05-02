@@ -76,6 +76,14 @@ describe("BackedFactory", function () {
     expect(await implementation.symbol(), "BTI");
   });
 
+  it("should not allow deployment without proxyAdminOwnerAddress", async () => {
+    await expect(
+      (
+        await ethers.getContractFactory("BackedFactory")
+      ).deploy(ethers.constants.AddressZero)
+    ).to.revertedWith("Factory: address should not be 0");
+  });
+
   it("should not allow 0 address to be assigned to role", async () => {
     await expect(
       factory.deployToken(
@@ -187,5 +195,29 @@ describe("BackedFactory", function () {
     expect(await tokenContract.minter()).to.equal(minter.address);
     expect(await tokenContract.pauser()).to.equal(pauser.address);
     expect(await tokenContract.burner()).to.equal(burner.address);
+  });
+
+  it("should not deploy the same token twice", async () => {
+    await (
+      await factory.deployToken(
+        tokenName,
+        tokenSymbol,
+        tokenContractOwner.address,
+        minter.address,
+        burner.address,
+        pauser.address
+      )
+    ).wait();
+
+    await expect(
+      factory.deployToken(
+        tokenName,
+        tokenSymbol,
+        tokenContractOwner.address,
+        minter.address,
+        burner.address,
+        pauser.address
+      )
+    ).to.reverted;
   });
 });

@@ -43,8 +43,6 @@ contract BackedFactory is Ownable {
     ProxyAdmin public proxyAdmin;
     BackedTokenImplementation public tokenImplementation;
 
-    mapping(address => bool) public deployedTokens;
-
     event NewToken(address indexed newToken, string name, string symbol);
 
     /**
@@ -83,10 +81,6 @@ contract BackedFactory is Ownable {
         );
 
         BackedTokenImplementation newToken = BackedTokenImplementation(address(newProxy));
-
-        require(!deployedTokens[address(newToken)], "Factory: Shouldn't deploy same address");
-
-        deployedTokens[address(newToken)] = true;
 
         newToken.setMinter(minter);
         newToken.setBurner(burner);
