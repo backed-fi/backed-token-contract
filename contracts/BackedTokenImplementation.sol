@@ -22,6 +22,18 @@
  * SOFTWARE.
  */
 
+/**
+ * Disclaimer and Terms of Use
+ *
+ * These ERC-20 tokens have not been registered under the U.S. Securities Act of 1933 as,
+ * amended or with any securities regulatory authority of any State or other jurisdiction
+ * of the United States and (i) may not be offered, sold or delivered within the United States
+ * to, or for the account or benefit of U.S. Persons, and (ii) may be offered, sold or otherwise
+ * delivered at any time only to transferees that are Non-United States Persons (as defined by 
+ * the U.S. Commodities Futures Trading Commission). 
+ * For more information and restrictions please refer to the issuer's [Terms of Use](https://www.backedassets.fi/products-terms-of-use)
+ */
+
 pragma solidity 0.8.9;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
