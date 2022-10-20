@@ -62,6 +62,7 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
     // EIP-712 Delegate Functionality:
     bool public delegateMode;
     mapping(address => bool) public delegateWhitelist;
+    mapping(address => bool) public blacklist;
 
     // Pause:
     bool public isPaused;
@@ -73,6 +74,7 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
     event DelegateWhitelistChange(address indexed whitelistAddress, bool status);
     event DelegateModeChange(bool delegateMode);
     event PauseModeChange(bool pauseMode);
+    event BlacklistChange(address indexed blacklistAddress, bool status);
 
     modifier allowedDelegate {
         require(delegateMode || delegateWhitelist[_msgSender()], "BackedToken: Unauthorized delegate");
@@ -222,6 +224,19 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
         emit NewPauser(newPauser);
     }
 
+    /**
+     * @dev Function to blacklist addresses, mostly for OFAC sanctioned addresses.
+     *  Allowed only for owner
+     *
+     * Emits a { BlacklistChange } event
+     *
+     * @param blacklistAddress  The address for which to change the delegate status
+     * @param status            The new delegate status
+     */
+    function setBlacklist(address blacklistAddress, bool status) external onlyOwner {
+        blacklist[blacklistAddress] = status;
+        emit BlacklistChange(blacklistAddress, status);
+    }
 
     /**
      * @dev EIP-712 Function to change the delegate status of account.
@@ -251,13 +266,18 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
         emit DelegateModeChange(_delegateMode);
     }
 
-    // Implement the pause functionality:
+    // Implement the pause and blacklist functionality:
     function _beforeTokenTransfer(
         address from,
         address to,
         uint256 amount
     ) internal virtual override {
+        // Check not paused:
         require(!isPaused, "BackedToken: token transfer while paused");
+
+        // Check blacklist:
+        require(!blacklist[from], "BackedToken: sender is blacklisted");
+        require(!blacklist[to], "BackedToken: receiver is blacklisted");
 
         super._beforeTokenTransfer(from, to, amount);
     }

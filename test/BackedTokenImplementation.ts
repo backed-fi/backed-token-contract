@@ -548,4 +548,46 @@ describe("BackedToken", function () {
         )
     ).to.revertedWith("ERC20Permit: invalid signature");
   });
+
+  it("Blacklist address", async function () {
+    await token.setMinter(minter.address);
+    await token.connect(minter.signer).mint(owner.address, 100);
+    await token.connect(minter.signer).mint(tmpAccount.address, 100);
+    await token.setPauser(pauser.address);
+
+    // Try to blacklist not from owner account:
+    await expect(
+      token.connect(accounts[2]).setBlacklist(tmpAccount.address, true)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+
+    // Blacklist an address:
+    const receipt = await (
+      await token.setBlacklist(tmpAccount.address, true)
+    ).wait();
+    expect(receipt.events?.[0].event).to.equal("BlacklistChange");
+    expect(receipt.events?.[0].args?.[0]).to.equal(tmpAccount.address);
+    expect(receipt.events?.[0].args?.[1]).to.equal(true);
+
+    // Try to send to the blacklisted address:
+    await expect(token.transfer(tmpAccount.address, 100)).to.be.revertedWith(
+      "BackedToken: receiver is blacklisted"
+    );
+
+    // Try to send from the blacklisted address:
+    await expect(
+      token.connect(tmpAccount.signer).transfer(owner.address, 100)
+    ).to.be.revertedWith("BackedToken: sender is blacklisted");
+
+    // Remove from blacklist:
+    const receipt2 = await (
+      await token.setBlacklist(tmpAccount.address, false)
+    ).wait();
+    expect(receipt2.events?.[0].event).to.equal("BlacklistChange");
+    expect(receipt2.events?.[0].args?.[0]).to.equal(tmpAccount.address);
+    expect(receipt2.events?.[0].args?.[1]).to.equal(false);
+
+    // Check transfer is possible:
+    token.transfer(tmpAccount.address, 100);
+    token.connect(tmpAccount.signer).transfer(owner.address, 100);
+  });
 });
