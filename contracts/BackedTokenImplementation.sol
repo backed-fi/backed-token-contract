@@ -48,6 +48,7 @@ import "./ERC20PermitDelegateTransfer.sol";
  *  - A minter, that can mint new tokens.
  *  - A burner, that can burn its own tokens, or contract's tokens.
  *  - A pauser, that can pause or restore all transfers in the contract.
+ *  - A blacklister, that can blacklist addresses from transferring.
  *  - An owner, that can set the three above.
  * The owner can also set who can use the EIP-712 functionality, either specific accounts via a whitelist, or everyone.
  * 
@@ -58,6 +59,7 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
     address public minter;
     address public burner;
     address public pauser;
+    address public blacklister;
 
     // EIP-712 Delegate Functionality:
     bool public delegateMode;
@@ -71,6 +73,7 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
     event NewMinter(address indexed newMinter);
     event NewBurner(address indexed newBurner);
     event NewPauser(address indexed newPauser);
+    event NewBlacklister(address indexed newBlacklister);
     event DelegateWhitelistChange(address indexed whitelistAddress, bool status);
     event DelegateModeChange(bool delegateMode);
     event PauseModeChange(bool pauseMode);
@@ -225,6 +228,20 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
     }
 
     /**
+     * @dev Function to change the contract blacklister. Allowed only for owner
+     *
+     * Emits a { NewBlacklister } event
+     *
+     * @param newBlacklister The address of the new blacklister
+     */
+    function setBlacklister(address newBlacklister) external onlyOwner {
+        require(newBlacklister != address(0), "BackedToken: address should not be 0");
+
+        blacklister = newBlacklister;
+        emit NewBlacklister(newBlacklister);
+    }
+
+    /**
      * @dev Function to blacklist addresses, mostly for OFAC sanctioned addresses.
      *  Allowed only for owner
      *
@@ -233,7 +250,9 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
      * @param blacklistAddress  The address for which to change the delegate status
      * @param status            The new delegate status
      */
-    function setBlacklist(address blacklistAddress, bool status) external onlyOwner {
+    function setBlacklist(address blacklistAddress, bool status) external {
+        require(_msgSender() == blacklister, "BackedToken: Only blacklister");
+        
         blacklist[blacklistAddress] = status;
         emit BlacklistChange(blacklistAddress, status);
     }

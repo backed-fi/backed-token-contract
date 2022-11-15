@@ -27,6 +27,7 @@ describe("BackedToken", function () {
   let minter: SignerWithAddress;
   let burner: SignerWithAddress;
   let pauser: SignerWithAddress;
+  let blacklister: SignerWithAddress;
   let tmpAccount: SignerWithAddress;
   let chainId: BigNumber;
 
@@ -42,7 +43,8 @@ describe("BackedToken", function () {
     minter = await getSigner(1);
     burner = await getSigner(2);
     pauser = await getSigner(3);
-    tmpAccount = await getSigner(4);
+    blacklister = await getSigner(4);
+    tmpAccount = await getSigner(5);
 
     // Deploy the token factory
     tokenFactory = await (
@@ -218,6 +220,7 @@ describe("BackedToken", function () {
     receipt = await (await token.setPauser(tmpAccount.address)).wait();
     expect(receipt.events?.[0].event).to.equal("NewPauser");
     expect(receipt.events?.[0].args?.[0]).to.equal(tmpAccount.address);
+    expect(await token.pauser()).to.equal(tmpAccount.address);
   });
 
   it("Try to define Pauser from wrong address", async function () {
@@ -549,20 +552,51 @@ describe("BackedToken", function () {
     ).to.revertedWith("ERC20Permit: invalid signature");
   });
 
+  it("Define Blacklister and transfer Blacklister", async function () {
+    // Set Blacklister
+    let receipt = await (
+      await token.setBlacklister(blacklister.address)
+    ).wait();
+    expect(receipt.events?.[0].event).to.equal("NewBlacklister");
+    expect(receipt.events?.[0].args?.[0]).to.equal(blacklister.address);
+    expect(await token.blacklister()).to.equal(blacklister.address);
+
+    // Change Blacklister
+    receipt = await (await token.setBlacklister(tmpAccount.address)).wait();
+    expect(receipt.events?.[0].event).to.equal("NewBlacklister");
+    expect(receipt.events?.[0].args?.[0]).to.equal(tmpAccount.address);
+    expect(await token.blacklister()).to.equal(tmpAccount.address);
+  });
+
+  it("Try to define Blacklister from wrong address", async function () {
+    await expect(
+      token.connect(accounts[3]).setBlacklister(blacklister.address)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
+  it("Should not allow address 0 to be set as blacklister", async () => {
+    await expect(
+      token.setBlacklister(ethers.constants.AddressZero)
+    ).to.be.revertedWith("BackedToken: address should not be 0");
+  });
+
   it("Blacklist address", async function () {
     await token.setMinter(minter.address);
     await token.connect(minter.signer).mint(owner.address, 100);
     await token.connect(minter.signer).mint(tmpAccount.address, 100);
     await token.setPauser(pauser.address);
+    await token.setBlacklister(blacklister.address);
 
-    // Try to blacklist not from owner account:
+    // Try to blacklist not from blacklister account:
     await expect(
-      token.connect(accounts[2]).setBlacklist(tmpAccount.address, true)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+      token.connect(owner.signer).setBlacklist(tmpAccount.address, true)
+    ).to.be.revertedWith("BackedToken: Only blacklister");
 
     // Blacklist an address:
     const receipt = await (
-      await token.setBlacklist(tmpAccount.address, true)
+      await token
+        .connect(blacklister.signer)
+        .setBlacklist(tmpAccount.address, true)
     ).wait();
     expect(receipt.events?.[0].event).to.equal("BlacklistChange");
     expect(receipt.events?.[0].args?.[0]).to.equal(tmpAccount.address);
@@ -580,7 +614,9 @@ describe("BackedToken", function () {
 
     // Remove from blacklist:
     const receipt2 = await (
-      await token.setBlacklist(tmpAccount.address, false)
+      await token
+        .connect(blacklister.signer)
+        .setBlacklist(tmpAccount.address, false)
     ).wait();
     expect(receipt2.events?.[0].event).to.equal("BlacklistChange");
     expect(receipt2.events?.[0].args?.[0]).to.equal(tmpAccount.address);
