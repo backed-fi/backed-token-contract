@@ -626,4 +626,31 @@ describe("BackedToken", function () {
     token.transfer(tmpAccount.address, 100);
     token.connect(tmpAccount.signer).transfer(owner.address, 100);
   });
+
+  it("Blacklister cannot stop minting and burning", async function () {
+    await token.setMinter(minter.address);
+    await token.connect(minter.signer).mint(owner.address, 100);
+    await token.connect(minter.signer).mint(tmpAccount.address, 100);
+    await token.setBurner(burner.address);
+    await token.setPauser(pauser.address);
+    await token.setBlacklister(blacklister.address);
+
+    // Try to blacklist 0x0 address:
+    await expect(
+      token
+        .connect(blacklister.signer)
+        .setBlacklist(ethers.constants.AddressZero, true)
+    ).to.be.revertedWith("BackedToken: Cannot blacklist 0x0");
+
+    // Try to blacklist minter address:
+    await token.connect(blacklister.signer).setBlacklist(minter.address, true);
+    await token.connect(minter.signer).mint(tmpAccount.address, 100);
+    expect(await token.balanceOf(tmpAccount.address)).to.equal(200);
+
+    // Try to blacklist burner address:
+    await token.connect(minter.signer).mint(burner.address, 100);
+    await token.connect(blacklister.signer).setBlacklist(burner.address, true);
+    await token.connect(burner.signer).burn(burner.address, 50);
+    expect(await token.balanceOf(burner.address)).to.equal(50);
+  });
 });

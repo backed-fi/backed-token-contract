@@ -252,6 +252,7 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
      */
     function setBlacklist(address blacklistAddress, bool status) external {
         require(_msgSender() == blacklister, "BackedToken: Only blacklister");
+        require(blacklistAddress != address(0), "BackedToken: Cannot blacklist 0x0");
         
         blacklist[blacklistAddress] = status;
         emit BlacklistChange(blacklistAddress, status);
@@ -294,9 +295,11 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
         // Check not paused:
         require(!isPaused, "BackedToken: token transfer while paused");
 
-        // Check blacklist:
-        require(!blacklist[from], "BackedToken: sender is blacklisted");
-        require(!blacklist[to], "BackedToken: receiver is blacklisted");
+        // Check blacklist, but do not prevent burning:
+        if (from != burner || to != address(0)) {
+            require(!blacklist[from], "BackedToken: sender is blacklisted");
+            require(!blacklist[to], "BackedToken: receiver is blacklisted");
+        }
 
         super._beforeTokenTransfer(from, to, amount);
     }
