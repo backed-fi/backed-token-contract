@@ -193,8 +193,6 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
      * @param newMinter The address of the new minter
      */
     function setMinter(address newMinter) external onlyOwner {
-        require(newMinter != address(0), "BackedToken: address should not be 0");
-
         minter = newMinter;
         emit NewMinter(newMinter);
     }
@@ -207,8 +205,6 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
      * @param newBurner The address of the new burner
      */
     function setBurner(address newBurner) external onlyOwner {
-        require(newBurner != address(0), "BackedToken: address should not be 0");
-
         burner = newBurner;
         emit NewBurner(newBurner);
     }
@@ -221,8 +217,6 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
      * @param newPauser The address of the new pauser
      */
     function setPauser(address newPauser) external onlyOwner {
-        require(newPauser != address(0), "BackedToken: address should not be 0");
-
         pauser = newPauser;
         emit NewPauser(newPauser);
     }
@@ -235,8 +229,6 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
      * @param newBlacklister The address of the new blacklister
      */
     function setBlacklister(address newBlacklister) external onlyOwner {
-        require(newBlacklister != address(0), "BackedToken: address should not be 0");
-
         blacklister = newBlacklister;
         emit NewBlacklister(newBlacklister);
     }
@@ -286,7 +278,7 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
         emit DelegateModeChange(_delegateMode);
     }
 
-    // Implement the pause and blacklist functionality:
+    // Implement the pause and blacklist functionality before transfer:
     function _beforeTokenTransfer(
         address from,
         address to,
@@ -304,6 +296,16 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
         super._beforeTokenTransfer(from, to, amount);
     }
 
+    // Implement the blacklist functionality for spender:
+    function _spendAllowance(
+        address owner,
+        address spender,
+        uint256 amount
+    ) internal virtual override {
+        require(!blacklist[spender], "BackedToken: spender is blacklisted");
+
+        super._spendAllowance(owner, spender, amount);
+    }
     /**
      * @dev This empty reserved space is put in place to allow future versions to add new
      * variables without shifting down storage in the inheritance chain.

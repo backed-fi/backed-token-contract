@@ -104,12 +104,6 @@ describe("BackedToken", function () {
     ).to.be.revertedWith("Ownable: caller is not the owner");
   });
 
-  it("Should not allow address 0 to be set as minter", async () => {
-    await expect(
-      token.setMinter(ethers.constants.AddressZero)
-    ).to.be.revertedWith("BackedToken: address should not be 0");
-  });
-
   it("Mint", async function () {
     await token.setMinter(minter.address);
     const receipt = await (
@@ -149,12 +143,6 @@ describe("BackedToken", function () {
     await expect(
       token.connect(accounts[3]).setBurner(burner.address)
     ).to.be.revertedWith("Ownable: caller is not the owner");
-  });
-
-  it("Should not allow address 0 to be set as burner", async () => {
-    await expect(
-      token.setBurner(ethers.constants.AddressZero)
-    ).to.be.revertedWith("BackedToken: address should not be 0");
   });
 
   it("Burn", async function () {
@@ -227,12 +215,6 @@ describe("BackedToken", function () {
     await expect(
       token.connect(accounts[3]).setPauser(pauser.address)
     ).to.be.revertedWith("Ownable: caller is not the owner");
-  });
-
-  it("Should not allow address 0 to be set as pauser", async () => {
-    await expect(
-      token.setPauser(ethers.constants.AddressZero)
-    ).to.be.revertedWith("BackedToken: address should not be 0");
   });
 
   it("Pause and Unpause", async function () {
@@ -574,12 +556,6 @@ describe("BackedToken", function () {
     ).to.be.revertedWith("Ownable: caller is not the owner");
   });
 
-  it("Should not allow address 0 to be set as blacklister", async () => {
-    await expect(
-      token.setBlacklister(ethers.constants.AddressZero)
-    ).to.be.revertedWith("BackedToken: address should not be 0");
-  });
-
   it("Blacklist address", async function () {
     await token.setMinter(minter.address);
     await token.connect(minter.signer).mint(owner.address, 100);
@@ -612,6 +588,14 @@ describe("BackedToken", function () {
       token.connect(tmpAccount.signer).transfer(owner.address, 100)
     ).to.be.revertedWith("BackedToken: sender is blacklisted");
 
+    // Try to spend from the blacklisted address:
+    token.connect(owner.signer).approve(tmpAccount.address, 100);
+    await expect(
+      token
+        .connect(tmpAccount.signer)
+        .transferFrom(owner.address, minter.address, 50)
+    ).to.be.revertedWith("BackedToken: spender is blacklisted");
+
     // Remove from blacklist:
     const receipt2 = await (
       await token
@@ -623,8 +607,15 @@ describe("BackedToken", function () {
     expect(receipt2.events?.[0].args?.[1]).to.equal(false);
 
     // Check transfer is possible:
-    token.transfer(tmpAccount.address, 100);
-    token.connect(tmpAccount.signer).transfer(owner.address, 100);
+    await token.transfer(tmpAccount.address, 100);
+    await token.connect(tmpAccount.signer).transfer(owner.address, 100);
+
+    // Check transferFrom is possible:
+    await token
+      .connect(tmpAccount.signer)
+      .transferFrom(owner.address, burner.address, 50);
+    expect(await token.balanceOf(burner.address)).to.equal(50);
+    expect(await token.balanceOf(owner.address)).to.equal(50);
   });
 
   it("Blacklister cannot stop minting and burning", async function () {
