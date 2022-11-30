@@ -6,6 +6,7 @@ import {
   BackedFactory,
   BackedTokenImplementation,
   BackedTokenImplementationV2,
+  SanctionsListMock,
 } from "../typechain";
 
 type SignerWithAddress = {
@@ -17,11 +18,12 @@ describe("BackedToken", function () {
   // General config:
   let tokenFactory: BackedFactory;
   let token: BackedTokenImplementation;
+  let sanctionsList: SanctionsListMock;
   let accounts: Signer[];
 
   // Basic config:
-  const tokenName = "Wrapped Apple";
-  const tokenSymbol = "WAAPL";
+  const tokenName = "Backed Apple";
+  const tokenSymbol = "bAAPL";
 
   let owner: SignerWithAddress;
   let minter: SignerWithAddress;
@@ -53,6 +55,13 @@ describe("BackedToken", function () {
 
     await tokenFactory.deployed();
 
+    // Deploy the Sanctions List contract:
+    sanctionsList = await (
+      await ethers.getContractFactory("SanctionsListMock", blacklister.signer)
+    ).deploy();
+
+    await sanctionsList.deployed();
+
     // Deploy contract:
     const tokenDeploymentReceipt = await (
       await tokenFactory.deployToken(
@@ -61,7 +70,8 @@ describe("BackedToken", function () {
         owner.address,
         minter.address,
         burner.address,
-        pauser.address
+        pauser.address,
+        sanctionsList.address
       )
     ).wait();
 
@@ -534,77 +544,76 @@ describe("BackedToken", function () {
     ).to.revertedWith("ERC20Permit: invalid signature");
   });
 
-  it("Define Blacklister and transfer Blacklister", async function () {
-    // Set Blacklister
-    let receipt = await (
-      await token.setBlacklister(blacklister.address)
-    ).wait();
-    expect(receipt.events?.[0].event).to.equal("NewBlacklister");
-    expect(receipt.events?.[0].args?.[0]).to.equal(blacklister.address);
-    expect(await token.blacklister()).to.equal(blacklister.address);
+  it("Set SanctionsList", async function () {
+    // Deploy a new Sanctions List:
+    const sanctionsList2: SanctionsListMock = await (
+      await ethers.getContractFactory("SanctionsListMock", blacklister.signer)
+    ).deploy();
+    await sanctionsList2.deployed();
 
-    // Change Blacklister
-    receipt = await (await token.setBlacklister(tmpAccount.address)).wait();
-    expect(receipt.events?.[0].event).to.equal("NewBlacklister");
-    expect(receipt.events?.[0].args?.[0]).to.equal(tmpAccount.address);
-    expect(await token.blacklister()).to.equal(tmpAccount.address);
+    // Test current Sanctions List:
+    expect(await token.sanctionsList()).to.equal(sanctionsList.address);
+
+    // Change SanctionsList
+    const receipt = await (
+      await token.setSanctionsList(sanctionsList2.address)
+    ).wait();
+    expect(receipt.events?.[0].event).to.equal("NewSanctionsList");
+    expect(receipt.events?.[0].args?.[0]).to.equal(sanctionsList2.address);
+    expect(await token.sanctionsList()).to.equal(sanctionsList2.address);
   });
 
-  it("Try to define Blacklister from wrong address", async function () {
+  it("Try to set SanctionsList from wrong address", async function () {
     await expect(
-      token.connect(accounts[3]).setBlacklister(blacklister.address)
+      token.connect(tmpAccount.signer).setSanctionsList(tmpAccount.address)
     ).to.be.revertedWith("Ownable: caller is not the owner");
   });
 
-  it("Blacklist address", async function () {
+  it("Try to set SanctionsList to a contract not following the interface", async function () {
+    await expect(
+      token.connect(owner.signer).setSanctionsList(token.address)
+    ).to.be.revertedWith(
+      "Transaction reverted: function selector was not recognized and there's no fallback function"
+    );
+  });
+
+  it("Check blocking of address in the Sanctions List", async function () {
     await token.setMinter(minter.address);
     await token.connect(minter.signer).mint(owner.address, 100);
     await token.connect(minter.signer).mint(tmpAccount.address, 100);
     await token.setPauser(pauser.address);
-    await token.setBlacklister(blacklister.address);
 
-    // Try to blacklist not from blacklister account:
-    await expect(
-      token.connect(owner.signer).setBlacklist(tmpAccount.address, true)
-    ).to.be.revertedWith("BackedToken: Only blacklister");
-
-    // Blacklist an address:
-    const receipt = await (
-      await token
+    // Add an address to the sanctions list:
+    await (
+      await sanctionsList
         .connect(blacklister.signer)
-        .setBlacklist(tmpAccount.address, true)
+        .addToSanctionsList([tmpAccount.address])
     ).wait();
-    expect(receipt.events?.[0].event).to.equal("BlacklistChange");
-    expect(receipt.events?.[0].args?.[0]).to.equal(tmpAccount.address);
-    expect(receipt.events?.[0].args?.[1]).to.equal(true);
 
-    // Try to send to the blacklisted address:
+    // Try to send to the sanctioned address:
     await expect(token.transfer(tmpAccount.address, 100)).to.be.revertedWith(
-      "BackedToken: receiver is blacklisted"
+      "BackedToken: receiver is sanctioned"
     );
 
-    // Try to send from the blacklisted address:
+    // Try to send from the sanctioned address:
     await expect(
       token.connect(tmpAccount.signer).transfer(owner.address, 100)
-    ).to.be.revertedWith("BackedToken: sender is blacklisted");
+    ).to.be.revertedWith("BackedToken: sender is sanctioned");
 
-    // Try to spend from the blacklisted address:
+    // Try to spend from the sanctioned address:
     token.connect(owner.signer).approve(tmpAccount.address, 100);
     await expect(
       token
         .connect(tmpAccount.signer)
         .transferFrom(owner.address, minter.address, 50)
-    ).to.be.revertedWith("BackedToken: spender is blacklisted");
+    ).to.be.revertedWith("BackedToken: spender is sanctioned");
 
-    // Remove from blacklist:
-    const receipt2 = await (
-      await token
+    // Remove from sanctions list:
+    await (
+      await sanctionsList
         .connect(blacklister.signer)
-        .setBlacklist(tmpAccount.address, false)
+        .removeFromSanctionsList([tmpAccount.address])
     ).wait();
-    expect(receipt2.events?.[0].event).to.equal("BlacklistChange");
-    expect(receipt2.events?.[0].args?.[0]).to.equal(tmpAccount.address);
-    expect(receipt2.events?.[0].args?.[1]).to.equal(false);
 
     // Check transfer is possible:
     await token.transfer(tmpAccount.address, 100);
@@ -618,29 +627,31 @@ describe("BackedToken", function () {
     expect(await token.balanceOf(owner.address)).to.equal(50);
   });
 
-  it("Blacklister cannot stop minting and burning", async function () {
+  it("SanctionsList cannot stop minting and burning", async function () {
     await token.setMinter(minter.address);
     await token.connect(minter.signer).mint(owner.address, 100);
     await token.connect(minter.signer).mint(tmpAccount.address, 100);
     await token.setBurner(burner.address);
     await token.setPauser(pauser.address);
-    await token.setBlacklister(blacklister.address);
+    await token.setSanctionsList(sanctionsList.address);
 
-    // Try to blacklist 0x0 address:
-    await expect(
-      token
-        .connect(blacklister.signer)
-        .setBlacklist(ethers.constants.AddressZero, true)
-    ).to.be.revertedWith("BackedToken: Cannot blacklist 0x0");
-
-    // Try to blacklist minter address:
-    await token.connect(blacklister.signer).setBlacklist(minter.address, true);
+    // Sanction 0x0 address, and still mint:
+    await sanctionsList.addToSanctionsList([ethers.constants.AddressZero]);
     await token.connect(minter.signer).mint(tmpAccount.address, 100);
     expect(await token.balanceOf(tmpAccount.address)).to.equal(200);
 
-    // Try to blacklist burner address:
+    // Try to sanction minter address:
+    await sanctionsList
+      .connect(blacklister.signer)
+      .addToSanctionsList([minter.address]);
+    await token.connect(minter.signer).mint(tmpAccount.address, 100);
+    expect(await token.balanceOf(tmpAccount.address)).to.equal(300);
+
+    // Try to sanction burner address:
     await token.connect(minter.signer).mint(burner.address, 100);
-    await token.connect(blacklister.signer).setBlacklist(burner.address, true);
+    await sanctionsList
+      .connect(blacklister.signer)
+      .addToSanctionsList([burner.address]);
     await token.connect(burner.signer).burn(burner.address, 50);
     expect(await token.balanceOf(burner.address)).to.equal(50);
   });

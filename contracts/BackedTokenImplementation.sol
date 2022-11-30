@@ -38,18 +38,19 @@ pragma solidity 0.8.9;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "./ERC20PermitDelegateTransfer.sol";
+import "./SanctionsList.sol";
 
 /**
  * @dev
  *
  * This token contract is following the ERC20 standard.
  * It inherits ERC20PermitDelegateTransfer.sol, which extends the basic ERC20 to also allow permit and delegateTransfer EIP-712 functionality.
+ * Enforces Sanctions List via the Chainalysis standard interface.
  * The contract contains three roles:
  *  - A minter, that can mint new tokens.
  *  - A burner, that can burn its own tokens, or contract's tokens.
  *  - A pauser, that can pause or restore all transfers in the contract.
- *  - A blacklister, that can blacklist addresses from transferring.
- *  - An owner, that can set the three above.
+ *  - An owner, that can set the three above, and also the sanctionsList pointer.
  * The owner can also set who can use the EIP-712 functionality, either specific accounts via a whitelist, or everyone.
  * 
  */
@@ -59,25 +60,25 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
     address public minter;
     address public burner;
     address public pauser;
-    address public blacklister;
 
     // EIP-712 Delegate Functionality:
     bool public delegateMode;
     mapping(address => bool) public delegateWhitelist;
-    mapping(address => bool) public blacklist;
 
     // Pause:
     bool public isPaused;
+
+    // SanctionsList:
+    SanctionsList public sanctionsList;
 
     // Events:
     event NewMinter(address indexed newMinter);
     event NewBurner(address indexed newBurner);
     event NewPauser(address indexed newPauser);
-    event NewBlacklister(address indexed newBlacklister);
+    event NewSanctionsList(address indexed newSanctionsList);
     event DelegateWhitelistChange(address indexed whitelistAddress, bool status);
     event DelegateModeChange(bool delegateMode);
     event PauseModeChange(bool pauseMode);
-    event BlacklistChange(address indexed blacklistAddress, bool status);
 
     modifier allowedDelegate {
         require(delegateMode || delegateWhitelist[_msgSender()], "BackedToken: Unauthorized delegate");
@@ -222,33 +223,20 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
     }
 
     /**
-     * @dev Function to change the contract blacklister. Allowed only for owner
+     * @dev Function to change the contract Senctions List. Allowed only for owner
      *
-     * Emits a { NewBlacklister } event
+     * Emits a { NewSanctionsList } event
      *
-     * @param newBlacklister The address of the new blacklister
+     * @param newSanctionsList The address of the new Senctions List following the Chainalysis standard
      */
-    function setBlacklister(address newBlacklister) external onlyOwner {
-        blacklister = newBlacklister;
-        emit NewBlacklister(newBlacklister);
+    function setSanctionsList(address newSanctionsList) external onlyOwner {
+        // Check the proposed sanctions list contract has the right interface:
+        require(!SanctionsList(newSanctionsList).isSanctioned(address(this)), "BackedToken: Wrong List interface");
+
+        sanctionsList = SanctionsList(newSanctionsList);
+        emit NewSanctionsList(newSanctionsList);
     }
 
-    /**
-     * @dev Function to blacklist addresses, mostly for OFAC sanctioned addresses.
-     *  Allowed only for owner
-     *
-     * Emits a { BlacklistChange } event
-     *
-     * @param blacklistAddress  The address for which to change the delegate status
-     * @param status            The new delegate status
-     */
-    function setBlacklist(address blacklistAddress, bool status) external {
-        require(_msgSender() == blacklister, "BackedToken: Only blacklister");
-        require(blacklistAddress != address(0), "BackedToken: Cannot blacklist 0x0");
-        
-        blacklist[blacklistAddress] = status;
-        emit BlacklistChange(blacklistAddress, status);
-    }
 
     /**
      * @dev EIP-712 Function to change the delegate status of account.
@@ -278,7 +266,7 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
         emit DelegateModeChange(_delegateMode);
     }
 
-    // Implement the pause and blacklist functionality before transfer:
+    // Implement the pause and SanctionsList functionality before transfer:
     function _beforeTokenTransfer(
         address from,
         address to,
@@ -287,22 +275,22 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
         // Check not paused:
         require(!isPaused, "BackedToken: token transfer while paused");
 
-        // Check blacklist, but do not prevent burning:
-        if (from != burner || to != address(0)) {
-            require(!blacklist[from], "BackedToken: sender is blacklisted");
-            require(!blacklist[to], "BackedToken: receiver is blacklisted");
+        // Check Sanctions List, but do not prevent minting burning:
+        if (from != address(0) && to != address(0)) {
+            require(!sanctionsList.isSanctioned(from), "BackedToken: sender is sanctioned");
+            require(!sanctionsList.isSanctioned(to), "BackedToken: receiver is sanctioned");
         }
 
         super._beforeTokenTransfer(from, to, amount);
     }
 
-    // Implement the blacklist functionality for spender:
+    // Implement the SanctionsList functionality for spender:
     function _spendAllowance(
         address owner,
         address spender,
         uint256 amount
     ) internal virtual override {
-        require(!blacklist[spender], "BackedToken: spender is blacklisted");
+        require(!sanctionsList.isSanctioned(spender), "BackedToken: spender is sanctioned");
 
         super._spendAllowance(owner, spender, amount);
     }
