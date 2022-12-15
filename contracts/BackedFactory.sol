@@ -68,7 +68,7 @@ contract BackedFactory is Ownable {
      * @param burner        The address of the account to which the burner role will be assigned
      * @param pauser        The address of the account to which the pauser role will be assigned
      */
-    function deployToken(string memory name, string memory symbol, address tokenOwner, address minter, address burner, address pauser) external onlyOwner returns (address) {
+    function deployToken(string memory name, string memory symbol, address tokenOwner, address minter, address burner, address pauser, address sanctionsList) external onlyOwner returns (address) {
         require(tokenOwner != address(0) && minter != address(0) && burner != address(0) && pauser != address(0),
             "Factory: address should not be 0");
 
@@ -85,6 +85,7 @@ contract BackedFactory is Ownable {
         newToken.setMinter(minter);
         newToken.setBurner(burner);
         newToken.setPauser(pauser);
+        newToken.setSanctionsList(sanctionsList);
         newToken.transferOwnership(tokenOwner);
 
         emit NewToken(address(newToken), name, symbol);

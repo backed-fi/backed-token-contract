@@ -5,6 +5,7 @@ import {
   BackedTokenImplementation,
   BackedFactory,
   ProxyAdmin,
+  SanctionsListMock
   // eslint-disable-next-line node/no-missing-import
 } from "../typechain";
 
@@ -18,17 +19,19 @@ describe("BackedFactory", function () {
   let implementation: BackedTokenImplementation;
   let proxyAdmin: ProxyAdmin;
   let factory: BackedFactory;
+  let sanctionsList: SanctionsListMock;
 
   let accounts: Signer[];
 
   // Basic config:
-  const tokenName = "Wrapped Apple";
-  const tokenSymbol = "WAAPL";
+  const tokenName = "Backed Apple";
+  const tokenSymbol = "bAAPL";
 
   let random: SignerWithAddress;
   let minter: SignerWithAddress;
   let burner: SignerWithAddress;
   let pauser: SignerWithAddress;
+  let blacklister: SignerWithAddress;
   let factoryOwner: SignerWithAddress;
   let proxyAdminOwner: SignerWithAddress;
   let tokenContractOwner: SignerWithAddress;
@@ -49,6 +52,7 @@ describe("BackedFactory", function () {
     burner = await getSigner(4);
     pauser = await getSigner(5);
     random = await getSigner(6);
+    blacklister = await getSigner(7);
 
     // Deploy factory contract:
     const BackedFactory = await ethers.getContractFactory("BackedFactory");
@@ -64,6 +68,13 @@ describe("BackedFactory", function () {
     // Set proxyAdmin:
     const proxyAdminAddress = await factory.proxyAdmin();
     proxyAdmin = await ethers.getContractAt("ProxyAdmin", proxyAdminAddress);
+
+    // Deploy the Sanctions List contract:
+    sanctionsList = await (
+      await ethers.getContractFactory("SanctionsListMock", blacklister.signer)
+    ).deploy();
+
+    await sanctionsList.deployed();
   });
 
   it("Basic owners check", async function () {
@@ -92,7 +103,8 @@ describe("BackedFactory", function () {
         ethers.constants.AddressZero,
         minter.address,
         burner.address,
-        pauser.address
+        pauser.address,
+        sanctionsList.address
       )
     ).to.revertedWith("Factory: address should not be 0");
 
@@ -103,7 +115,8 @@ describe("BackedFactory", function () {
         tokenContractOwner.address,
         ethers.constants.AddressZero,
         burner.address,
-        pauser.address
+        pauser.address,
+        sanctionsList.address
       )
     ).to.revertedWith("Factory: address should not be 0");
 
@@ -114,7 +127,8 @@ describe("BackedFactory", function () {
         tokenContractOwner.address,
         minter.address,
         ethers.constants.AddressZero,
-        pauser.address
+        pauser.address,
+        sanctionsList.address
       )
     ).to.revertedWith("Factory: address should not be 0");
 
@@ -125,7 +139,8 @@ describe("BackedFactory", function () {
         tokenContractOwner.address,
         minter.address,
         burner.address,
-        ethers.constants.AddressZero
+        ethers.constants.AddressZero,
+        sanctionsList.address
       )
     ).to.revertedWith("Factory: address should not be 0");
   });
@@ -138,7 +153,8 @@ describe("BackedFactory", function () {
         tokenContractOwner.address,
         minter.address,
         burner.address,
-        pauser.address
+        pauser.address,
+        sanctionsList.address
       )
     ).wait();
 
@@ -164,7 +180,8 @@ describe("BackedFactory", function () {
           tokenContractOwner.address,
           minter.address,
           burner.address,
-          pauser.address
+          pauser.address,
+          sanctionsList.address
         )
     ).to.be.revertedWith("Ownable: caller is not the owner");
   });
@@ -177,7 +194,8 @@ describe("BackedFactory", function () {
         tokenContractOwner.address,
         minter.address,
         burner.address,
-        pauser.address
+        pauser.address,
+        sanctionsList.address
       )
     ).wait();
 
@@ -205,7 +223,8 @@ describe("BackedFactory", function () {
         tokenContractOwner.address,
         minter.address,
         burner.address,
-        pauser.address
+        pauser.address,
+        sanctionsList.address
       )
     ).wait();
 
@@ -216,7 +235,8 @@ describe("BackedFactory", function () {
         tokenContractOwner.address,
         minter.address,
         burner.address,
-        pauser.address
+        pauser.address,
+        sanctionsList.address
       )
     ).to.reverted;
   });

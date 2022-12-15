@@ -3,6 +3,7 @@ import {
   BackedFactory,
   BackedTokenImplementation,
   BackedTokenImplementationV2,
+  SanctionsListMock
 } from "../typechain";
 import { ethers } from "hardhat";
 import { expect } from "chai";
@@ -15,6 +16,8 @@ describe("upgradability", () => {
   let minter: SignerWithAddress;
   let burner: SignerWithAddress;
   let pauser: SignerWithAddress;
+  let blacklister: SignerWithAddress;
+  let sanctionsList: SanctionsListMock;
 
   const tokenName = "Wrapped Apple";
   const tokenSymbol = "WAAPL";
@@ -43,11 +46,17 @@ describe("upgradability", () => {
     minter = await getSigner(1);
     burner = await getSigner(2);
     pauser = await getSigner(3);
+    blacklister = await getSigner(4);
 
     // Deploy the token factory
     v1Factory = await (
       await ethers.getContractFactory("BackedFactory")
     ).deploy(owner.address);
+
+    // Deploy the Sanctions List contract:
+    sanctionsList = await (
+      await ethers.getContractFactory("SanctionsListMock", blacklister.signer)
+    ).deploy();
 
     const tokenDeploymentReceipt = await (
       await v1Factory.deployToken(
@@ -56,7 +65,8 @@ describe("upgradability", () => {
         owner.address,
         minter.address,
         burner.address,
-        pauser.address
+        pauser.address,
+        sanctionsList.address
       )
     ).wait();
 

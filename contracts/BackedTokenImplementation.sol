@@ -38,17 +38,19 @@ pragma solidity 0.8.9;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "./ERC20PermitDelegateTransfer.sol";
+import "./SanctionsList.sol";
 
 /**
  * @dev
  *
  * This token contract is following the ERC20 standard.
  * It inherits ERC20PermitDelegateTransfer.sol, which extends the basic ERC20 to also allow permit and delegateTransfer EIP-712 functionality.
+ * Enforces Sanctions List via the Chainalysis standard interface.
  * The contract contains three roles:
  *  - A minter, that can mint new tokens.
  *  - A burner, that can burn its own tokens, or contract's tokens.
  *  - A pauser, that can pause or restore all transfers in the contract.
- *  - An owner, that can set the three above.
+ *  - An owner, that can set the three above, and also the sanctionsList pointer.
  * The owner can also set who can use the EIP-712 functionality, either specific accounts via a whitelist, or everyone.
  * 
  */
@@ -66,10 +68,14 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
     // Pause:
     bool public isPaused;
 
+    // SanctionsList:
+    SanctionsList public sanctionsList;
+
     // Events:
     event NewMinter(address indexed newMinter);
     event NewBurner(address indexed newBurner);
     event NewPauser(address indexed newPauser);
+    event NewSanctionsList(address indexed newSanctionsList);
     event DelegateWhitelistChange(address indexed whitelistAddress, bool status);
     event DelegateModeChange(bool delegateMode);
     event PauseModeChange(bool pauseMode);
@@ -188,8 +194,6 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
      * @param newMinter The address of the new minter
      */
     function setMinter(address newMinter) external onlyOwner {
-        require(newMinter != address(0), "BackedToken: address should not be 0");
-
         minter = newMinter;
         emit NewMinter(newMinter);
     }
@@ -202,8 +206,6 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
      * @param newBurner The address of the new burner
      */
     function setBurner(address newBurner) external onlyOwner {
-        require(newBurner != address(0), "BackedToken: address should not be 0");
-
         burner = newBurner;
         emit NewBurner(newBurner);
     }
@@ -216,10 +218,23 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
      * @param newPauser The address of the new pauser
      */
     function setPauser(address newPauser) external onlyOwner {
-        require(newPauser != address(0), "BackedToken: address should not be 0");
-
         pauser = newPauser;
         emit NewPauser(newPauser);
+    }
+
+    /**
+     * @dev Function to change the contract Senctions List. Allowed only for owner
+     *
+     * Emits a { NewSanctionsList } event
+     *
+     * @param newSanctionsList The address of the new Senctions List following the Chainalysis standard
+     */
+    function setSanctionsList(address newSanctionsList) external onlyOwner {
+        // Check the proposed sanctions list contract has the right interface:
+        require(!SanctionsList(newSanctionsList).isSanctioned(address(this)), "BackedToken: Wrong List interface");
+
+        sanctionsList = SanctionsList(newSanctionsList);
+        emit NewSanctionsList(newSanctionsList);
     }
 
 
@@ -251,17 +266,34 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
         emit DelegateModeChange(_delegateMode);
     }
 
-    // Implement the pause functionality:
+    // Implement the pause and SanctionsList functionality before transfer:
     function _beforeTokenTransfer(
         address from,
         address to,
         uint256 amount
     ) internal virtual override {
+        // Check not paused:
         require(!isPaused, "BackedToken: token transfer while paused");
+
+        // Check Sanctions List, but do not prevent minting burning:
+        if (from != address(0) && to != address(0)) {
+            require(!sanctionsList.isSanctioned(from), "BackedToken: sender is sanctioned");
+            require(!sanctionsList.isSanctioned(to), "BackedToken: receiver is sanctioned");
+        }
 
         super._beforeTokenTransfer(from, to, amount);
     }
 
+    // Implement the SanctionsList functionality for spender:
+    function _spendAllowance(
+        address owner,
+        address spender,
+        uint256 amount
+    ) internal virtual override {
+        require(!sanctionsList.isSanctioned(spender), "BackedToken: spender is sanctioned");
+
+        super._spendAllowance(owner, spender, amount);
+    }
     /**
      * @dev This empty reserved space is put in place to allow future versions to add new
      * variables without shifting down storage in the inheritance chain.
