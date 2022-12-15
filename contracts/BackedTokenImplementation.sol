@@ -31,7 +31,7 @@
  * to, or for the account or benefit of U.S. Persons, and (ii) may be offered, sold or otherwise
  * delivered at any time only to transferees that are Non-United States Persons (as defined by 
  * the U.S. Commodities Futures Trading Commission). 
- * For more information and restrictions please refer to the issuer's [Website] (https://www.backedassets.fi/legal-documentation)
+ * For more information and restrictions please refer to the issuer's [Website](https://www.backedassets.fi/legal-documentation)
  */
 
 pragma solidity 0.8.9;
