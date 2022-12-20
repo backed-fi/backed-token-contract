@@ -32,6 +32,14 @@ import "./BackedTokenImplementation.sol";
 
 /**
  * @dev
+  * TransparentUpgradeableProxy contract, renamed as BackedTokenProxy.
+ */
+contract BackedTokenProxy is TransparentUpgradeableProxy {
+    constructor(address _logic, address admin_, bytes memory _data) payable TransparentUpgradeableProxy( _logic, admin_, _data) {}
+}
+
+/**
+ * @dev
  *
  * Factory contract, used for creating new, upgradable tokens.
  * 
@@ -74,7 +82,7 @@ contract BackedFactory is Ownable {
 
         bytes32 salt = keccak256(abi.encodePacked(name, symbol));
 
-        TransparentUpgradeableProxy newProxy = new TransparentUpgradeableProxy{salt : salt}(
+        BackedTokenProxy newProxy = new BackedTokenProxy{salt : salt}(
             address(tokenImplementation),
             address(proxyAdmin),
             abi.encodeWithSelector(BackedTokenImplementation(address(0)).initialize.selector, name, symbol)
