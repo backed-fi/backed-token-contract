@@ -52,6 +52,7 @@ contract BackedFactory is Ownable {
     BackedTokenImplementation public tokenImplementation;
 
     event NewToken(address indexed newToken, string name, string symbol);
+    event NewImplementation(address indexed newImplementation);
 
     /**
      * @param proxyAdminOwner The address of the account that will be set as owner of the deployed ProxyAdmin
@@ -99,5 +100,20 @@ contract BackedFactory is Ownable {
         emit NewToken(address(newToken), name, symbol);
 
         return (address(newToken));
+    }
+
+    /**
+     * @dev Update the implementation for future deployments
+     *
+     * Emits a { NewImplementation } event
+     * 
+     * @param newImplementation     address of the new implementation
+     */
+    function updateImplementation(address newImplementation) external onlyOwner {
+        require(newImplementation != address(0), "Factory: address should not be 0");
+
+        tokenImplementation = BackedTokenImplementation(newImplementation);
+
+        emit NewImplementation(newImplementation);
     }
 }
