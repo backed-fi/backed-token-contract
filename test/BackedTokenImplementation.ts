@@ -655,4 +655,18 @@ describe("BackedToken", function () {
     await token.connect(burner.signer).burn(burner.address, 50);
     expect(await token.balanceOf(burner.address)).to.equal(50);
   });
+
+  it("Check and set Terms", async function () {
+    // Test current Terms:
+    console.log(await token.terms());
+    expect(await token.terms()).to.equal(
+      "https://www.backedassets.fi/legal-documentation"
+    );
+
+    // Change Terms
+    const receipt = await (await token.setTerms("New Terms ^^")).wait();
+    expect(receipt.events?.[0].event).to.equal("NewTerms");
+    expect(receipt.events?.[0].args?.[0]).to.equal("New Terms ^^");
+    expect(await token.terms()).to.equal("New Terms ^^");
+  });
 });
