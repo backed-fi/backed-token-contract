@@ -39,6 +39,7 @@ pragma solidity 0.8.9;
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "./ERC20PermitDelegateTransfer.sol";
 import "./SanctionsList.sol";
+import "./Terms.sol";
 
 /**
  * @dev
@@ -55,7 +56,7 @@ import "./SanctionsList.sol";
  * 
  */
 
-contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTransfer {
+contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTransfer, Terms {
     // Roles:
     address public minter;
     address public burner;
@@ -95,6 +96,7 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
         __ERC20_init(name_, symbol_);
         __Ownable_init();
         _buildDomainSeparator();
+        _setTerms("https://www.backedassets.fi/legal-documentation");
     }
 
     /**

@@ -240,4 +240,45 @@ describe("BackedFactory", function () {
       )
     ).to.reverted;
   });
+
+  it("should allow to change the implementation, if not zero", async () => {
+    // Deploy new implementation:
+    const TokenImplementation2 = await ethers.getContractFactory(
+      "BackedTokenImplementation"
+    );
+    const implementation2 = await TokenImplementation2.deploy();
+
+    // Change implementation:
+    const receipt = await (
+      await factory.updateImplementation(implementation2.address)
+    ).wait();
+    expect(receipt.events?.[0].event).to.equal("NewImplementation");
+    expect(receipt.events?.[0].args?.[0]).to.equal(implementation2.address);
+
+    // Test the new implementation:
+    const tokenDeploymentReceipt = await (
+      await factory.deployToken(
+        tokenName,
+        tokenSymbol,
+        tokenContractOwner.address,
+        minter.address,
+        burner.address,
+        pauser.address,
+        sanctionsList.address
+      )
+    ).wait();
+
+    const newTokenAddress = tokenDeploymentReceipt.events?.find(
+      (event) => event.event === "NewToken"
+    )?.args?.newToken;
+
+    expect(await proxyAdmin.getProxyImplementation(newTokenAddress)).to.equal(
+      implementation2.address
+    );
+
+    // Check zero implementation fail:
+    await expect(
+      factory.updateImplementation(ethers.constants.AddressZero)
+    ).to.revertedWith("Factory: address should not be 0");
+  });
 });
