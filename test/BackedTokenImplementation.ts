@@ -658,7 +658,6 @@ describe("BackedToken", function () {
 
   it("Check and set Terms", async function () {
     // Test current Terms:
-    console.log(await token.terms());
     expect(await token.terms()).to.equal(
       "https://www.backedassets.fi/legal-documentation"
     );
