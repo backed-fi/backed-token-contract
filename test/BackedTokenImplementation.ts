@@ -90,11 +90,19 @@ describe("BackedToken", function () {
     chainId = BigNumber.from(network.chainId);
   });
 
+  it("Cannot initialize twice", async function () {
+    await expect(
+      token.connect(owner.signer).initialize("test1", "test2")
+    ).to.be.revertedWith("Initializable: contract is already initialized");
+  });
+
   it("Basic information check", async function () {
     expect(await token.name()).to.equal(tokenName);
     expect(await token.symbol()).to.equal(tokenSymbol);
     expect(await token.owner()).to.equal(owner.address);
-    expect(await token.terms()).to.equal("https://www.backedassets.fi/legal-documentation");
+    expect(await token.terms()).to.equal(
+      "https://www.backedassets.fi/legal-documentation"
+    );
     expect(await token.VERSION()).to.equal("1.1.0");
   });
 
@@ -547,6 +555,20 @@ describe("BackedToken", function () {
     ).to.revertedWith("ERC20Permit: invalid signature");
   });
 
+  it("Try to set delegate from wrong address", async function () {
+    // Delegate mode:
+    await expect(
+      token.connect(tmpAccount.signer).setDelegateMode(true)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+
+    // Delegate address:
+    await expect(
+      token
+        .connect(tmpAccount.signer)
+        .setDelegateWhitelist(tmpAccount.address, true)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
   it("Set SanctionsList", async function () {
     // Deploy a new Sanctions List:
     const sanctionsList2: SanctionsListMock = await (
@@ -670,5 +692,11 @@ describe("BackedToken", function () {
     expect(receipt.events?.[0].event).to.equal("NewTerms");
     expect(receipt.events?.[0].args?.[0]).to.equal("New Terms ^^");
     expect(await token.terms()).to.equal("New Terms ^^");
+  });
+
+  it("Try to set Terms from wrong address", async function () {
+    await expect(
+      token.connect(tmpAccount.signer).setTerms("Random Terms")
+    ).to.be.revertedWith("Ownable: caller is not the owner");
   });
 });

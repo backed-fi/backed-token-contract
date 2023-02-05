@@ -8,7 +8,7 @@ import {
 import { ethers } from "hardhat";
 import { expect } from "chai";
 
-describe("Upgrade from v1 to v2", () => {
+describe("Upgrade from v1.0.0 to v1.1.0", () => {
   let implementationV2: BackedTokenImplementation;
   let tokenV2: BackedTokenImplementation;
   let tokenV1: BackedTokenImplementationV1;

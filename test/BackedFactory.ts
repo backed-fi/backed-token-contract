@@ -5,7 +5,7 @@ import {
   BackedTokenImplementation,
   BackedFactory,
   ProxyAdmin,
-  SanctionsListMock
+  SanctionsListMock,
   // eslint-disable-next-line node/no-missing-import
 } from "../typechain";
 
@@ -241,7 +241,7 @@ describe("BackedFactory", function () {
     ).to.reverted;
   });
 
-  it("should allow to change the implementation, if not zero", async () => {
+  it("should allow to change the implementation", async () => {
     // Deploy new implementation:
     const TokenImplementation2 = await ethers.getContractFactory(
       "BackedTokenImplementation"
@@ -275,10 +275,26 @@ describe("BackedFactory", function () {
     expect(await proxyAdmin.getProxyImplementation(newTokenAddress)).to.equal(
       implementation2.address
     );
+  });
 
+  it("should not allow 0 address to be assigned to implementation", async () => {
     // Check zero implementation fail:
     await expect(
       factory.updateImplementation(ethers.constants.AddressZero)
     ).to.revertedWith("Factory: address should not be 0");
+  });
+
+  it("should not allow non owners to change implementation", async () => {
+    // Deploy new implementation:
+    const TokenImplementation2 = await ethers.getContractFactory(
+      "BackedTokenImplementation"
+    );
+    const implementation2 = await TokenImplementation2.deploy();
+
+    await expect(
+      factory
+        .connect(random.signer)
+        .updateImplementation(implementation2.address)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
   });
 });

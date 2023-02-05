@@ -285,7 +285,7 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
     }
 
     // Implement setTerms, tp allow also to use from initializer:
-    function _setTerms(string memory newTerms) internal virtual onlyOwner {
+    function _setTerms(string memory newTerms) internal virtual {
         terms = newTerms;
         emit NewTerms(newTerms);
     }

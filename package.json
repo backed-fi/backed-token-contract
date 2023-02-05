@@ -1,10 +1,10 @@
 {
   "name": "backed-token-contract",
-  "version": "0.0.2",
+  "version": "1.1.0",
   "description": "ERC20 Token contracts for Backed Finance AG",
   "main": "index.js",
   "engines": {
-    "node": ">=18"
+    "node": ">=16"
   },
   "scripts": {
     "compile": "hardhat compile",
