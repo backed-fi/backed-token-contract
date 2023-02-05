@@ -1,22 +1,25 @@
 import { getSigner, setMintingAllowance, SignerWithAddress } from "./helpers";
 import {
-  BackedFactory,
+  BackedFactoryV1,
   BackedTokenImplementation,
-  BackedTokenImplementationV2,
-  SanctionsListMock
+  BackedTokenImplementationV1,
+  SanctionsListMock,
 } from "../typechain";
 import { ethers } from "hardhat";
 import { expect } from "chai";
 
-describe("upgradability", () => {
-  let implementation: BackedTokenImplementation | BackedTokenImplementationV2;
-  let v1Factory: BackedFactory;
+describe("Upgrade from v1 to v2", () => {
+  let implementationV2: BackedTokenImplementation;
+  let tokenV2: BackedTokenImplementation;
+  let tokenV1: BackedTokenImplementationV1;
+  let v1Factory: BackedFactoryV1;
 
   let owner: SignerWithAddress;
   let minter: SignerWithAddress;
   let burner: SignerWithAddress;
   let pauser: SignerWithAddress;
   let blacklister: SignerWithAddress;
+  let tmpAccount: SignerWithAddress;
   let sanctionsList: SanctionsListMock;
 
   const tokenName = "Wrapped Apple";
@@ -29,28 +32,30 @@ describe("upgradability", () => {
       await v1Factory.proxyAdmin()
     );
 
-    const v2 = await (
-      await ethers.getContractFactory("BackedTokenImplementationV2")
+    implementationV2 = await (
+      await ethers.getContractFactory("BackedTokenImplementation")
     ).deploy();
 
-    await proxyAdmin.upgrade(implementation.address, v2.address);
+    await proxyAdmin.upgrade(tokenV1.address, implementationV2.address);
 
-    implementation = await ethers.getContractAt(
-      "BackedTokenImplementationV2",
-      implementation.address
+    tokenV2 = await ethers.getContractAt(
+      "BackedTokenImplementation",
+      tokenV1.address
     );
   };
 
   beforeEach(async () => {
+    // Roles:
     owner = await getSigner(0);
     minter = await getSigner(1);
     burner = await getSigner(2);
     pauser = await getSigner(3);
     blacklister = await getSigner(4);
+    tmpAccount = await getSigner(5);
 
     // Deploy the token factory
     v1Factory = await (
-      await ethers.getContractFactory("BackedFactory")
+      await ethers.getContractFactory("BackedFactoryV1")
     ).deploy(owner.address);
 
     // Deploy the Sanctions List contract:
@@ -71,10 +76,10 @@ describe("upgradability", () => {
     ).wait();
 
     const deployedTokenAddress = tokenDeploymentReceipt.events?.find(
-      (event) => event.event === "NewToken"
+      (event: any) => event.event === "NewToken"
     )?.args?.newToken;
 
-    implementation = await ethers.getContractAt(
+    tokenV1 = await ethers.getContractAt(
       "BackedTokenImplementation",
       deployedTokenAddress
     );
@@ -84,52 +89,48 @@ describe("upgradability", () => {
     await upgradeContract();
   });
 
-  it("should have the same values", async () => {
-    const nameBefore = await implementation.name();
-    const ownerBefore = await implementation.owner();
-    const minterBefore = await implementation.minter();
+  it("should have the same info", async () => {
+    const nameBefore = await tokenV1.name();
+    const symbolBefore = await tokenV1.symbol();
+    const ownerBefore = await tokenV1.owner();
+    const minterBefore = await tokenV1.minter();
 
     await upgradeContract();
 
-    expect(nameBefore).to.equal(await implementation.name());
-    expect(ownerBefore).to.equal(await implementation.owner());
-    expect(minterBefore).to.equal(await implementation.minter());
+    expect(nameBefore).to.equal(await tokenV2.name());
+    expect(symbolBefore).to.equal(await tokenV2.symbol());
+    expect(ownerBefore).to.equal(await tokenV2.owner());
+    expect(minterBefore).to.equal(await tokenV2.minter());
   });
 
-  it("should have minting allowance", async () => {
+  it("should have the correct version", async () => {
     await upgradeContract();
 
-    expect(
-      implementation.connect(minter.signer).mint(minter.address, 1000)
-    ).to.revertedWith("BackedToken: Minting allowance low");
+    expect(await tokenV2.VERSION()).to.equal("1.1.0");
   });
 
-  it("should be able to mint correctly if upgraded", async () => {
+  it("should be able to set terms", async () => {
+    expect(await tokenV2.terms()).to.equal("");
+
+    await tokenV2.connect(owner.signer).setTerms("My Terms");
+
+    expect(await tokenV2.terms()).to.equal("My Terms");
+  });
+
+  it("should have same balances, and transferability", async () => {
+    tokenV1.connect(minter.signer).mint(tmpAccount.address, 100);
+
     await upgradeContract();
 
-    expect(
-      await (implementation as BackedTokenImplementationV2).mintingAllowance()
-    ).to.equal(0);
+    // Check balance:
+    expect(await tokenV2.balanceOf(tmpAccount.address)).to.equal(100);
 
-    await setMintingAllowance(
-      implementation.connect(minter.signer) as BackedTokenImplementationV2,
-      1000
-    );
+    // Transfer:
+    await tokenV2.connect(tmpAccount.signer).transfer(owner.address, 50);
+    expect(await tokenV2.balanceOf(tmpAccount.address)).to.equal(50);
 
-    const receipt = await (
-      await implementation.connect(minter.signer).mint(minter.address, 900)
-    ).wait();
-
-    expect(receipt.events?.[0].event).to.equal("Transfer");
-    expect(receipt.events?.[0].args?.[0]).to.equal(
-      ethers.constants.AddressZero
-    );
-    expect(receipt.events?.[0].args?.[1]).to.equal(minter.address);
-    expect(receipt.events?.[0].args?.[2]).to.equal(900);
-
-    expect(await implementation.balanceOf(minter.address)).to.equal(900);
-    expect(
-      await (implementation as BackedTokenImplementationV2).mintingAllowance()
-    ).to.equal(100);
+    // Mint:
+    tokenV1.connect(minter.signer).mint(tmpAccount.address, 100);
+    expect(await tokenV2.balanceOf(tmpAccount.address)).to.equal(150);
   });
 });

@@ -25,6 +25,7 @@ describe("BackedToken", function () {
   const tokenName = "Backed Apple";
   const tokenSymbol = "bAAPL";
 
+  // Roles:
   let owner: SignerWithAddress;
   let minter: SignerWithAddress;
   let burner: SignerWithAddress;
@@ -93,6 +94,8 @@ describe("BackedToken", function () {
     expect(await token.name()).to.equal(tokenName);
     expect(await token.symbol()).to.equal(tokenSymbol);
     expect(await token.owner()).to.equal(owner.address);
+    expect(await token.terms()).to.equal("https://www.backedassets.fi/legal-documentation");
+    expect(await token.VERSION()).to.equal("1.1.0");
   });
 
   it("Define Minter and transfer Minter", async function () {

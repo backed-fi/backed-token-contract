@@ -53,7 +53,8 @@ contract ERC20PermitDelegateTransfer is ERC20Upgradeable {
     bytes32 public DOMAIN_SEPARATOR;
 
     // A version number:
-    string internal constant VERSION = "1";
+    // solhint-disable-next-line var-name-mixedcase
+    string internal constant DOMAIN_SEPARATOR_VERSION = "1";
 
     /**
      * @dev Permit, approve via a sign message, using erc712.
@@ -117,7 +118,7 @@ contract ERC20PermitDelegateTransfer is ERC20Upgradeable {
             abi.encode(
                 keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
                 keccak256(bytes(name())),
-                keccak256(bytes(VERSION)),
+                keccak256(bytes(DOMAIN_SEPARATOR_VERSION)),
                 block.chainid,
                 address(this)
             )
