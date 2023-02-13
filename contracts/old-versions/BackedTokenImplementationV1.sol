@@ -37,8 +37,8 @@
 pragma solidity 0.8.9;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "./ERC20PermitDelegateTransfer.sol";
-import "./SanctionsList.sol";
+import "../ERC20PermitDelegateTransfer.sol";
+import "../SanctionsList.sol";
 
 /**
  * @dev
@@ -55,9 +55,7 @@ import "./SanctionsList.sol";
  * 
  */
 
-contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTransfer {
-    string constant public VERSION = "1.1.0";
-
+contract BackedTokenImplementationV1 is OwnableUpgradeable, ERC20PermitDelegateTransfer {
     // Roles:
     address public minter;
     address public burner;
@@ -73,9 +71,6 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
     // SanctionsList:
     SanctionsList public sanctionsList;
 
-    // Terms:
-    string public terms;
-
     // Events:
     event NewMinter(address indexed newMinter);
     event NewBurner(address indexed newBurner);
@@ -84,7 +79,6 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
     event DelegateWhitelistChange(address indexed whitelistAddress, bool status);
     event DelegateModeChange(bool delegateMode);
     event PauseModeChange(bool pauseMode);
-    event NewTerms(string newTerms);
 
     modifier allowedDelegate {
         require(delegateMode || delegateWhitelist[_msgSender()], "BackedToken: Unauthorized delegate");
@@ -101,7 +95,6 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
         __ERC20_init(name_, symbol_);
         __Ownable_init();
         _buildDomainSeparator();
-        _setTerms("https://www.backedassets.fi/legal-documentation"); // Default Terms
     }
 
     /**
@@ -273,23 +266,6 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
         emit DelegateModeChange(_delegateMode);
     }
 
-    /**
-     * @dev Function to change the contract terms. Allowed only for owner
-     *
-     * Emits a { NewTerms } event
-     *
-     * @param newTerms A string with the terms. Usually a web or IPFS link.
-     */
-    function setTerms(string memory newTerms) external onlyOwner {
-        _setTerms(newTerms);
-    }
-
-    // Implement setTerms, tp allow also to use from initializer:
-    function _setTerms(string memory newTerms) internal virtual {
-        terms = newTerms;
-        emit NewTerms(newTerms);
-    }
-
     // Implement the pause and SanctionsList functionality before transfer:
     function _beforeTokenTransfer(
         address from,
@@ -323,5 +299,5 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
      * variables without shifting down storage in the inheritance chain.
      * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
      */
-    uint256[49] private __gap;
+    uint256[50] private __gap;
 }
