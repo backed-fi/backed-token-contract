@@ -1,11 +1,10 @@
 import { expect } from "chai";
-import { ethers, upgrades } from "hardhat";
+import { ethers } from "hardhat";
 import { BigNumber, Signer } from "ethers";
 // eslint-disable-next-line node/no-missing-import
 import {
   BackedFactory,
   BackedTokenImplementation,
-  BackedTokenImplementationV2,
   SanctionsListMock,
 } from "../typechain";
 

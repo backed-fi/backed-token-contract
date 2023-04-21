@@ -1,4 +1,4 @@
-import { getSigner, setMintingAllowance, SignerWithAddress } from "./helpers";
+import { getSigner, SignerWithAddress } from "./helpers";
 import {
   BackedFactoryV1,
   BackedTokenImplementation,
