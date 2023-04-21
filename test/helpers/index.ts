@@ -1,5 +1,10 @@
 import { Signer } from "ethers";
 import { ethers } from "hardhat";
+import {
+  SnapshotRestorer,
+  takeSnapshot,
+} from "@nomicfoundation/hardhat-network-helpers";
+import { AsyncFunc } from "mocha";
 
 // eslint-disable-next-line node/no-missing-import
 import { BackedTokenImplementationV2 } from "../../typechain";
@@ -27,3 +32,28 @@ export const setMintingAllowance = async (
     24 * 60 * 60 + 10,
   ]);
 };
+
+const SNAPSHOTS: SnapshotRestorer[] = [];
+
+export function cacheBeforeEach(initializer: AsyncFunc): void {
+  let initialized = false;
+
+  beforeEach(async function () {
+    if (!initialized) {
+      await initializer.call(this);
+      SNAPSHOTS.push(await takeSnapshot());
+      initialized = true;
+    } else {
+      const snapshotId = SNAPSHOTS.pop()!;
+      await snapshotId.restore();
+      SNAPSHOTS.push(await takeSnapshot());
+    }
+  });
+
+  after(async function () {
+    if (initialized) {
+      const snapshotId = SNAPSHOTS.pop()!;
+      await snapshotId.restore();
+    }
+  });
+}
