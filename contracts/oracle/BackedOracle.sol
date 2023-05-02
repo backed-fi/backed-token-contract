@@ -27,7 +27,7 @@ import "./BackedOracleInterface.sol";
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
-contract BackedOracle is AggregatorV2V3Interface, OwnableUpgradeable {
+contract BackedOracle is OwnableUpgradeable, AggregatorV2V3Interface {
     uint8 public constant VERSION = 1;
     uint8 public constant MAX_PERCENT_DIFFERENCE = 10;
     uint32 public constant MAX_TIMESTAMP_AGE = 5 minutes;

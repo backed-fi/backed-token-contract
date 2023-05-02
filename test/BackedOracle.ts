@@ -1,8 +1,12 @@
+import * as helpers from "@nomicfoundation/hardhat-network-helpers";
+
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { Signer } from "ethers";
 import {
   BackedOracle,
+  BackedOracleFactory,
+  BackedOracleFactory__factory,
   BackedOracle__factory,
   // eslint-disable-next-line node/no-missing-import
 } from "../typechain";
@@ -12,19 +16,23 @@ type SignerWithAddress = {
   address: string;
 };
 
+const oneHour = 3600;
+const validOracleDeployArgs = [8, "Backed Test Oracle"] as const;
+const validUpdateAnswerArgs = [
+  100000,
+  Math.round(new Date().getTime() / 1000),
+] as const;
+
 describe("BackedOracle", function () {
   // General config:
   let oracle: BackedOracle;
+  let oracleFactory: BackedOracleFactory;
   let accounts: Signer[];
-
-  // Basic config:
-  const description = "Backed Token Oracle";
 
   let owner: SignerWithAddress;
   let newOwner: SignerWithAddress;
 
   beforeEach(async () => {
-    // Get accounts:
     accounts = await ethers.getSigners();
 
     const getSigner = async (index: number): Promise<SignerWithAddress> => ({
@@ -35,88 +43,149 @@ describe("BackedOracle", function () {
     owner = await getSigner(0);
     newOwner = await getSigner(1);
 
-    // Deploy oracle contract:
-    const oracleTx = await new BackedOracle__factory(owner.signer).deploy(
-      8,
-      description
-    );
+    oracleFactory = await (
+      await new BackedOracleFactory__factory(owner.signer).deploy(owner.address)
+    ).deployed();
 
-    oracle = await oracleTx.deployed();
+    // Deploy oracle contract:
+    const oracleTx = await (
+      await oracleFactory.deployOracle(...validOracleDeployArgs, owner.address)
+    ).wait();
+
+    const oracleAddress = oracleTx.events?.find((e) => e.event === "NewOracle")
+      ?.args?.newOracle;
+
+    oracle = new BackedOracle__factory(owner.signer).attach(oracleAddress);
   });
 
-  it("Basic owners check", async function () {
+  it("should be the correct version", async () => {
+    expect(await oracle.version()).to.eq(1);
+  });
+
+  it("should have the correct owner", async function () {
     expect(await oracle.owner(), owner.address);
   });
 
-  it("Test implementation", async function () {
-    expect(await oracle.description(), description);
-    expect(await oracle.decimals()).to.be.equal(8);
+  it("have the correct decimals and description", async function () {
+    expect(await oracle.decimals()).to.eq(validOracleDeployArgs[0]);
+    expect(await oracle.description()).to.eq(validOracleDeployArgs[1]);
   });
 
   it("should not allow update oracle by non admin user", async () => {
     await oracle.transferOwnership(newOwner.address);
 
-    await expect(oracle.updateAnswer(1, 1, 1)).to.revertedWith(
+    await expect(oracle.updateAnswer(1, 1)).to.revertedWith(
       "Ownable: caller is not the owner"
     );
   });
 
+  it("should be able to update the value with valid arguments", async () => {
+    // -- Act
+    await oracle.updateAnswer(...validUpdateAnswerArgs);
+
+    // -- Assert
+    expect((await oracle.latestTimestamp()).toNumber()).to.eq(
+      validUpdateAnswerArgs[1]
+    );
+  });
+
+  it("should revert with timestamp in the future", async () => {
+    expect(
+      oracle.updateAnswer(
+        validUpdateAnswerArgs[0],
+        validUpdateAnswerArgs[1] + oneHour
+      )
+    ).to.revertedWith("Timestamp cannot be in the future");
+  });
+
+  it("should revert with timestamp that is older than 5 minutes", async () => {
+    expect(
+      oracle.updateAnswer(
+        validUpdateAnswerArgs[0],
+        validUpdateAnswerArgs[1] - 6 * 60
+      )
+    ).to.revertedWith("Timestamp is too old");
+  });
+
+  it("should revert with timestamp that is older than last set timestamp", async () => {
+    await oracle.updateAnswer(
+      validUpdateAnswerArgs[0],
+      validUpdateAnswerArgs[1] + 10
+    );
+
+    expect(oracle.updateAnswer(...validUpdateAnswerArgs)).to.revertedWith(
+      "Timestamp is older than the last update"
+    );
+  });
+
+  it("should revert if one hour have not passed between updates", async () => {
+    await oracle.updateAnswer(...validUpdateAnswerArgs);
+
+    expect(
+      oracle.updateAnswer(
+        validUpdateAnswerArgs[0],
+        validUpdateAnswerArgs[1] + oneHour / 2
+      )
+    ).to.revertedWith("Timestamp cannot be updated too often");
+  });
+
   it("should revert fetching new round before first data is set", async () => {
+    await expect(oracle.latestRound()).to.revertedWith("No data present");
+    await expect(oracle.latestAnswer()).to.revertedWith("No data present");
+    await expect(oracle.latestTimestamp()).to.revertedWith("No data present");
     await expect(oracle.latestRoundData()).to.revertedWith("No data present");
   });
 
-  it("should revert when fetching for non existing round", async () => {
-    await expect(oracle.getRoundData(1000)).to.revertedWith("No data present");
+  it("should return the latest round data if that data is set", async () => {
+    // -- Setup
+    await oracle.updateAnswer(...validUpdateAnswerArgs);
+
+    // -- Act
+    const round = await oracle.latestRound();
+    const answer = await oracle.latestAnswer();
+    const timestamp = await oracle.latestTimestamp();
+    const roundData = await oracle.latestRoundData();
+
+    // -- Assert
+    expect(round).to.be.above(0);
+    expect(answer).to.eq(validUpdateAnswerArgs[0]);
+    expect(timestamp).to.eq(validUpdateAnswerArgs[1]);
+    expect(roundData).to.not.eq(undefined);
   });
 
-  it("should be able to update the value", async () => {
-    const newAnswer = 1e8;
-    const newTimestamp = 2;
-    const newRound = 2;
-    const oracleUpdateReceipt = await (
-      await oracle.updateAnswer(newAnswer, newTimestamp, newRound)
-    ).wait();
+  it("should return the data for specific round", async () => {
+    // -- Setup
+    await oracle.updateAnswer(...validUpdateAnswerArgs);
 
-    // Expect there to be { AnswerUpdated } event
-    const answerUpdatedEvent = oracleUpdateReceipt.events?.find(
-      (e) => e.event === "AnswerUpdated"
-    );
+    // -- Act
+    const round = await oracle.latestRound();
+    const answer = await oracle.getAnswer(round);
+    const timestamp = await oracle.getTimestamp(round);
+    const roundData = await oracle.getRoundData(round);
 
-    expect(answerUpdatedEvent).not.equal(undefined);
-    expect(answerUpdatedEvent?.args?.length).to.equal(3);
-    expect(answerUpdatedEvent?.args?.roundId).to.equal(newRound);
-    expect(answerUpdatedEvent?.args?.updatedAt).to.equal(newTimestamp);
-    expect(answerUpdatedEvent?.args?.current).to.equal(newAnswer);
+    // -- Assert
+    expect(round).to.be.above(0);
+    expect(answer).to.eq(validUpdateAnswerArgs[0]);
+    expect(timestamp).to.eq(validUpdateAnswerArgs[1]);
+    expect(roundData).to.not.eq(undefined);
+  });
 
-    // Test different ways to retrieve the data
-    const latestResponse = await oracle.latestRoundData();
+  it("should allow update if at least one hour has passed", async () => {
+    await oracle.updateAnswer(...validUpdateAnswerArgs);
 
-    const [roundId, answer, startedAt, updatedAt, answeredInRound] =
-      latestResponse;
-    expect(roundId).to.equal(newRound);
-    expect(answer).to.equal(newAnswer);
-    expect(startedAt).to.equal(newTimestamp);
-    expect(updatedAt).to.equal(newTimestamp);
-    expect(answeredInRound).to.equal(newTimestamp);
+    await helpers.time.increase(oneHour + 10);
 
-    const latestAnswer = await oracle.latestAnswer();
-    expect(latestAnswer).to.equal(newAnswer);
-    const latestRound = await oracle.latestRound();
-    expect(latestRound).to.equal(newRound);
-    const latestTimestamp = await oracle.latestTimestamp();
-    expect(latestTimestamp).to.equal(newTimestamp);
+    expect(
+      await oracle.updateAnswer(
+        validUpdateAnswerArgs[0],
+        validUpdateAnswerArgs[1] + oneHour + 10
+      )
+    ).to.not.eq(undefined);
+  });
 
-    expect(await oracle.getTimestamp(newRound)).to.be.equal(newRound);
-    expect(await oracle.getAnswer(newRound)).to.be.equal(newAnswer);
-
-    {
-      const [roundId, answer, startedAt, updatedAt, answeredInRound] =
-        await oracle.getRoundData(newRound);
-      expect(roundId).to.equal(newRound);
-      expect(answer).to.equal(newAnswer);
-      expect(startedAt).to.equal(newTimestamp);
-      expect(updatedAt).to.equal(newTimestamp);
-      expect(answeredInRound).to.equal(newTimestamp);
-    }
+  it("should revert when fetching for non existing round", async () => {
+    await expect(oracle.getAnswer(1000)).to.revertedWith("No data present");
+    await expect(oracle.getTimestamp(1000)).to.revertedWith("No data present");
+    await expect(oracle.getRoundData(1000)).to.revertedWith("No data present");
   });
 });

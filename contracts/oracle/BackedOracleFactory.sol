@@ -45,6 +45,7 @@ contract BackedOracleFactory is Ownable {
     ProxyAdmin public proxyAdmin;
     BackedOracle public implementation;
 
+    event NewOracle(address indexed newOracle);
     event NewImplementation(address indexed newImplementation);
 
     /**
@@ -64,7 +65,8 @@ contract BackedOracleFactory is Ownable {
 
     function deployOracle(
         uint8 decimals,
-        string memory description
+        string memory description,
+        address oracleOwner
     ) external onlyOwner returns (address) {
         bytes32 salt = keccak256(abi.encodePacked(description));
 
@@ -77,6 +79,12 @@ contract BackedOracleFactory is Ownable {
                 description
             )
         );
+
+        BackedOracle oracle = BackedOracle(address(proxy));
+
+        oracle.transferOwnership(oracleOwner);
+
+        emit NewOracle(address(proxy));
 
         return address(proxy);
     }
