@@ -107,22 +107,18 @@ contract BackedOracle is OwnableUpgradeable, AggregatorV2V3Interface {
 
     function getAnswer(
         uint256 roundId
-    ) external view override returns (int256) {
-        int192 answer = _roundData[roundId].answer;
+    ) external view override returns (int256) {        
+        require(roundId <= _latestRoundNumber, "No data present");
 
-        require(answer != 0, "No data present");
-
-        return answer;
+        return _roundData[roundId].answer;
     }
 
     function getTimestamp(
         uint256 roundId
     ) external view override returns (uint256) {
-        uint32 timestamp = _roundData[roundId].timestamp;
+        require(roundId <= _latestRoundNumber, "No data present");
 
-        require(timestamp != 0, "No data present");
-
-        return timestamp;
+        return _roundData[roundId].timestamp;
     }
 
     function getRoundData(
@@ -133,7 +129,7 @@ contract BackedOracle is OwnableUpgradeable, AggregatorV2V3Interface {
         override
         returns (uint80, int256, uint256, uint256, uint80)
     {
-        require(_roundData[roundId].answer != 0, "No data present");
+        require(roundId <= _latestRoundNumber, "No data present");
 
         return (
             roundId,
