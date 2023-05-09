@@ -45,7 +45,7 @@ contract BackedOracle is OwnableUpgradeable, AggregatorV2V3Interface {
     uint80 private _latestRoundNumber;
 
     constructor() {
-        initialize(8, "Backed Oracle");
+        initialize(0, "Backed Oracle Implemention");
     }
 
     function initialize(
@@ -147,7 +147,7 @@ contract BackedOracle is OwnableUpgradeable, AggregatorV2V3Interface {
     function updateAnswer(
         int192 newAnswer,
         uint32 newTimestamp
-    ) public onlyOwner {
+    ) external onlyOwner {
         int256 latestAnswer = _roundData[_latestRoundNumber].answer;
         uint256 latestTimestamp = _roundData[_latestRoundNumber].timestamp;
 
