@@ -25,13 +25,15 @@ pragma solidity 0.8.9;
 
 import "./BackedOracleInterface.sol";
 
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 
-contract BackedOracle is OwnableUpgradeable, AggregatorV2V3Interface {
+contract BackedOracle is AccessControlUpgradeable, AggregatorV2V3Interface {
     uint8 public constant VERSION = 1;
     uint8 public constant MAX_PERCENT_DIFFERENCE = 10;
     uint32 public constant MAX_TIMESTAMP_AGE = 5 minutes;
     uint32 public constant MIN_UPDATE_INTERVAL = 1 hours;
+
+    bytes32 public constant UPDATER_ROLE = keccak256("UPDATER_ROLE");
 
     struct RoundData {
         int192 answer;
@@ -45,17 +47,21 @@ contract BackedOracle is OwnableUpgradeable, AggregatorV2V3Interface {
     uint80 private _latestRoundNumber;
 
     constructor() {
-        initialize(0, "Backed Oracle Implemention");
+        initialize(0, "Backed Oracle Implementation", address(0), address(0));
     }
 
     function initialize(
         uint8 __decimals,
-        string memory __description
-    ) public initializer {
-        __Ownable_init();
+        string memory __description,
 
+        address __admin,
+        address __updater
+    ) public initializer {
         _decimals = __decimals;
         _description = __description;
+
+        _setupRole(DEFAULT_ADMIN_ROLE, __admin);
+        _setupRole(UPDATER_ROLE, __updater);
     }
 
     function version() external view override returns (uint256) {
@@ -107,7 +113,7 @@ contract BackedOracle is OwnableUpgradeable, AggregatorV2V3Interface {
 
     function getAnswer(
         uint256 roundId
-    ) external view override returns (int256) {        
+    ) external view override returns (int256) {
         require(roundId <= _latestRoundNumber, "No data present");
 
         return _roundData[roundId].answer;
@@ -143,7 +149,7 @@ contract BackedOracle is OwnableUpgradeable, AggregatorV2V3Interface {
     function updateAnswer(
         int192 newAnswer,
         uint32 newTimestamp
-    ) external onlyOwner {
+    ) external onlyRole(UPDATER_ROLE) {
         int256 latestAnswer = _roundData[_latestRoundNumber].answer;
         uint256 latestTimestamp = _roundData[_latestRoundNumber].timestamp;
 

@@ -50,6 +50,10 @@ const config: HardhatUserConfig = {
       accounts,
       url: process.env.SEPOLIA_URL || "",
     },
+    polygon: {
+      accounts,
+      url: process.env.POLYGON_URL || "",
+    },
     polygonMumbai: {
       accounts,
       url: process.env.MUMBAI_URL || "",
@@ -64,6 +68,7 @@ const config: HardhatUserConfig = {
       mainnet: process.env.ETHERSCAN_API_KEY || "",
       goerli: process.env.ETHERSCAN_API_KEY || "",
       sepolia: process.env.ETHERSCAN_API_KEY || "",
+      polygon: process.env.POLYGONSCAN_API_KEY || "",
       polygonMumbai: process.env.POLYGONSCAN_API_KEY || "",
     },
   },

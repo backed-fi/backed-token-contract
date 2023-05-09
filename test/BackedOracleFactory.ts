@@ -14,6 +14,7 @@ describe("BackedOracleFactory", () => {
 
   let owner: Signer;
   let ownerAddress: string;
+  let timelockWorkerAddress: string;
 
   let contract: BackedOracleFactory;
 
@@ -23,9 +24,11 @@ describe("BackedOracleFactory", () => {
     owner = accounts[0];
     ownerAddress = await accounts[0].getAddress();
 
+    timelockWorkerAddress = await accounts[0].getAddress();
+
     const factory = new BackedOracleFactory__factory(owner);
 
-    contract = await factory.deploy(ownerAddress);
+    contract = await factory.deploy(ownerAddress, [timelockWorkerAddress]);
   });
 
   it("should have the correct owners", async () => {
@@ -65,10 +68,11 @@ describe("BackedOracleFactory", () => {
     ).to.revertedWith("Ownable: caller is not the owner");
   });
 
-  it("should not allow deployment without address for the proxyAdmin", async () => {
+  it("should not allow deployment without address for the admin", async () => {
     await expect(
       new BackedOracleFactory__factory(owner).deploy(
-        ethers.constants.AddressZero
+        ethers.constants.AddressZero,
+        [timelockWorkerAddress]
       )
     ).to.revertedWith("Factory: address should not be 0");
   });

@@ -10,6 +10,7 @@ import {
   BackedOracle__factory,
   // eslint-disable-next-line node/no-missing-import
 } from "../typechain";
+import {time} from "@nomicfoundation/hardhat-network-helpers";
 
 type SignerWithAddress = {
   signer: Signer;
@@ -31,6 +32,7 @@ describe("BackedOracle", function () {
 
   let owner: SignerWithAddress;
   let newOwner: SignerWithAddress;
+  let timelockWorker: SignerWithAddress;
 
   beforeEach(async () => {
     accounts = await ethers.getSigners();
@@ -42,9 +44,10 @@ describe("BackedOracle", function () {
 
     owner = await getSigner(0);
     newOwner = await getSigner(1);
+    timelockWorker = await getSigner(2);
 
     oracleFactory = await (
-      await new BackedOracleFactory__factory(owner.signer).deploy(owner.address)
+      await new BackedOracleFactory__factory(owner.signer).deploy(owner.address, [timelockWorker.address])
     ).deployed();
 
     // Deploy oracle contract:
@@ -62,21 +65,13 @@ describe("BackedOracle", function () {
     expect(await oracle.version()).to.eq(1);
   });
 
-  it("should have the correct owner", async function () {
-    expect(await oracle.owner(), owner.address);
-  });
-
   it("have the correct decimals and description", async function () {
     expect(await oracle.decimals()).to.eq(validOracleDeployArgs[0]);
     expect(await oracle.description()).to.eq(validOracleDeployArgs[1]);
   });
 
-  it("should not allow update oracle by non admin user", async () => {
-    await oracle.transferOwnership(newOwner.address);
-
-    await expect(oracle.updateAnswer(1, 1)).to.revertedWith(
-      "Ownable: caller is not the owner"
-    );
+  it("should not allow update oracle by non updater address", async () => {
+    await expect(oracle.updateAnswer(1, 1)).to.be.reverted;
   });
 
   it("should be able to update the value with valid arguments", async () => {

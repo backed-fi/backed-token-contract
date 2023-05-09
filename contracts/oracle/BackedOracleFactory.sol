@@ -25,6 +25,7 @@
 pragma solidity 0.8.9;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/governance/TimelockController.sol";
 import "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import "./BackedOracle.sol";
@@ -43,30 +44,40 @@ contract BackedOracleProxy is TransparentUpgradeableProxy {
 
 contract BackedOracleFactory is Ownable {
     ProxyAdmin public proxyAdmin;
+    TimelockController public timelockController;
     BackedOracle public implementation;
 
     event NewOracle(address indexed newOracle);
     event NewImplementation(address indexed newImplementation);
 
     /**
-     * @param proxyAdminOwner The address of the account that will be set as owner of the deployed ProxyAdmin
+     * @param admin- The address of the account that will be set as owner of the deployed ProxyAdmin and will have the
+     *      timelock admin role for the timelock contract
      */
-    constructor(address proxyAdminOwner) {
+    constructor(address admin, address[] memory timelockWorkers) {
         require(
-            proxyAdminOwner != address(0),
+            admin != address(0),
             "Factory: address should not be 0"
         );
 
         implementation = new BackedOracle();
 
         proxyAdmin = new ProxyAdmin();
-        proxyAdmin.transferOwnership(proxyAdminOwner);
+        proxyAdmin.transferOwnership(admin);
+
+        timelockController = new TimelockController(
+            7 days,
+            timelockWorkers,
+            timelockWorkers
+        );
+
+        timelockController.grantRole(timelockController.TIMELOCK_ADMIN_ROLE(), admin);
     }
 
     function deployOracle(
         uint8 decimals,
         string memory description,
-        address oracleOwner
+        address oracleUpdater
     ) external onlyOwner returns (address) {
         bytes32 salt = keccak256(abi.encodePacked(description));
 
@@ -76,14 +87,13 @@ contract BackedOracleFactory is Ownable {
             abi.encodeWithSelector(
                 BackedOracle(address(0)).initialize.selector,
                 decimals,
-                description
+                description,
+                address(timelockController),
+                oracleUpdater
             )
         );
 
         BackedOracle oracle = BackedOracle(address(proxy));
-
-        oracle.transferOwnership(oracleOwner);
-
         emit NewOracle(address(proxy));
 
         return address(proxy);

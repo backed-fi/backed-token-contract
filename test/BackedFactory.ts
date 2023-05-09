@@ -5,7 +5,7 @@ import {
   BackedTokenImplementation,
   BackedFactory,
   ProxyAdmin,
-  SanctionsListMock,
+  SanctionsListMock, BackedTokenImplementation__factory
   // eslint-disable-next-line node/no-missing-import
 } from "../typechain";
 
