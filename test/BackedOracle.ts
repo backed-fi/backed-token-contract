@@ -4,13 +4,17 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { Signer } from "ethers";
 import {
+  AggregatorV2V3Interface,
   BackedOracle,
   BackedOracleFactory,
   BackedOracleFactory__factory,
   BackedOracle__factory,
+  TimelockController__factory,
   // eslint-disable-next-line node/no-missing-import
 } from "../typechain";
-import {time} from "@nomicfoundation/hardhat-network-helpers";
+import { time } from "@nomicfoundation/hardhat-network-helpers";
+import { FakeContract, smock } from "@defi-wonderland/smock";
+import { cacheBeforeEach } from "./helpers";
 
 type SignerWithAddress = {
   signer: Signer;
@@ -34,7 +38,7 @@ describe("BackedOracle", function () {
   let newOwner: SignerWithAddress;
   let timelockWorker: SignerWithAddress;
 
-  beforeEach(async () => {
+  cacheBeforeEach(async () => {
     accounts = await ethers.getSigners();
 
     const getSigner = async (index: number): Promise<SignerWithAddress> => ({
@@ -47,7 +51,10 @@ describe("BackedOracle", function () {
     timelockWorker = await getSigner(2);
 
     oracleFactory = await (
-      await new BackedOracleFactory__factory(owner.signer).deploy(owner.address, [timelockWorker.address])
+      await new BackedOracleFactory__factory(owner.signer).deploy(
+        owner.address,
+        [timelockWorker.address]
+      )
     ).deployed();
 
     // Deploy oracle contract:
@@ -71,7 +78,11 @@ describe("BackedOracle", function () {
   });
 
   it("should not allow update oracle by non updater address", async () => {
-    await expect(oracle.updateAnswer(1, 1)).to.be.reverted;
+    await expect(
+      oracle.connect(newOwner.signer).updateAnswer(1, validUpdateAnswerArgs[1])
+    ).to.be.revertedWith(
+      `AccessControl: account ${newOwner.address.toLowerCase()} is missing role ${await oracle.UPDATER_ROLE()}`
+    );
   });
 
   it("should be able to update the value with valid arguments", async () => {
@@ -85,43 +96,45 @@ describe("BackedOracle", function () {
   });
 
   it("should revert with timestamp in the future", async () => {
-    expect(
+    await expect(
       oracle.updateAnswer(
         validUpdateAnswerArgs[0],
         validUpdateAnswerArgs[1] + oneHour
       )
-    ).to.revertedWith("Timestamp cannot be in the future");
+    ).to.be.revertedWith("Timestamp cannot be in the future");
   });
 
   it("should revert with timestamp that is older than 5 minutes", async () => {
-    expect(
+    await expect(
       oracle.updateAnswer(
         validUpdateAnswerArgs[0],
         validUpdateAnswerArgs[1] - 6 * 60
       )
-    ).to.revertedWith("Timestamp is too old");
+    ).to.be.revertedWith("Timestamp is too old");
   });
 
   it("should revert with timestamp that is older than last set timestamp", async () => {
-    await oracle.updateAnswer(
-      validUpdateAnswerArgs[0],
-      validUpdateAnswerArgs[1] + 10
-    );
+    await oracle.updateAnswer(...validUpdateAnswerArgs);
 
-    expect(oracle.updateAnswer(...validUpdateAnswerArgs)).to.revertedWith(
-      "Timestamp is older than the last update"
-    );
+    await expect(
+      oracle.updateAnswer(
+        validUpdateAnswerArgs[0],
+        validUpdateAnswerArgs[1] - 10
+      )
+    ).to.be.revertedWith("Timestamp is older than the last update");
   });
 
   it("should revert if one hour have not passed between updates", async () => {
     await oracle.updateAnswer(...validUpdateAnswerArgs);
 
-    expect(
+    await time.increase(oneHour / 2);
+
+    await expect(
       oracle.updateAnswer(
         validUpdateAnswerArgs[0],
         validUpdateAnswerArgs[1] + oneHour / 2
       )
-    ).to.revertedWith("Timestamp cannot be updated too often");
+    ).to.be.revertedWith("Timestamp cannot be updated too often");
   });
 
   it("should revert fetching new round before first data is set", async () => {
@@ -182,5 +195,40 @@ describe("BackedOracle", function () {
     await expect(oracle.getAnswer(1000)).to.revertedWith("No data present");
     await expect(oracle.getTimestamp(1000)).to.revertedWith("No data present");
     await expect(oracle.getRoundData(1000)).to.revertedWith("No data present");
+  });
+
+  describe("When price deviates significantly", () => {
+    cacheBeforeEach(async () => {
+      await oracle.updateAnswer(
+        validUpdateAnswerArgs[0],
+        validUpdateAnswerArgs[1]
+      );
+      await time.increase(3700);
+    });
+
+    it("should limit update by 10% max increase", async () => {
+      // -- Act
+      await oracle.updateAnswer(
+        validUpdateAnswerArgs[0] * 2,
+        validUpdateAnswerArgs[1] + 3700
+      );
+
+      // -- Assert
+      expect((await oracle.latestAnswer()).toNumber()).to.eq(
+        Math.floor(validUpdateAnswerArgs[0] * 1.1)
+      );
+    });
+    it("should limit update by 10% max decrease", async () => {
+      // -- Act
+      await oracle.updateAnswer(
+        validUpdateAnswerArgs[0] * 0.5,
+        validUpdateAnswerArgs[1] + 3700
+      );
+
+      // -- Assert
+      expect((await oracle.latestAnswer()).toNumber()).to.eq(
+        Math.floor(validUpdateAnswerArgs[0] * 0.9)
+      );
+    });
   });
 });

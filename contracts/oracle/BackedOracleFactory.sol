@@ -29,6 +29,7 @@ import "@openzeppelin/contracts/governance/TimelockController.sol";
 import "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import "./BackedOracle.sol";
+import "./BackedOracleForwarder.sol";
 
 /**
  * @dev
@@ -48,6 +49,7 @@ contract BackedOracleFactory is Ownable {
     BackedOracle public implementation;
 
     event NewOracle(address indexed newOracle);
+    event NewOracleForwarder(address indexed newOracleForwarder);
     event NewImplementation(address indexed newImplementation);
 
     /**
@@ -63,7 +65,6 @@ contract BackedOracleFactory is Ownable {
         implementation = new BackedOracle();
 
         proxyAdmin = new ProxyAdmin();
-        proxyAdmin.transferOwnership(admin);
 
         timelockController = new TimelockController(
             7 days,
@@ -71,6 +72,7 @@ contract BackedOracleFactory is Ownable {
             timelockWorkers
         );
 
+        proxyAdmin.transferOwnership(address(timelockController));
         timelockController.grantRole(timelockController.TIMELOCK_ADMIN_ROLE(), admin);
     }
 
@@ -96,7 +98,13 @@ contract BackedOracleFactory is Ownable {
         BackedOracle oracle = BackedOracle(address(proxy));
         emit NewOracle(address(proxy));
 
-        return address(proxy);
+        BackedOracleForwarder forwarder = new BackedOracleForwarder{salt: salt}(
+            address(proxy)
+        );
+        forwarder.transferOwnership(address(timelockController));
+        emit NewOracleForwarder(address(forwarder));
+
+        return address(forwarder);
     }
 
     /**

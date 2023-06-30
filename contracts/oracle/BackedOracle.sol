@@ -60,8 +60,8 @@ contract BackedOracle is AccessControlUpgradeable, AggregatorV2V3Interface {
         _decimals = __decimals;
         _description = __description;
 
-        _setupRole(DEFAULT_ADMIN_ROLE, __admin);
-        _setupRole(UPDATER_ROLE, __updater);
+        _grantRole(DEFAULT_ADMIN_ROLE, __admin);
+        _grantRole(UPDATER_ROLE, __updater);
     }
 
     function version() external view override returns (uint256) {
