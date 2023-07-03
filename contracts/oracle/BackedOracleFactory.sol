@@ -95,7 +95,6 @@ contract BackedOracleFactory is Ownable {
             )
         );
 
-        BackedOracle oracle = BackedOracle(address(proxy));
         emit NewOracle(address(proxy));
 
         BackedOracleForwarder forwarder = new BackedOracleForwarder{salt: salt}(
