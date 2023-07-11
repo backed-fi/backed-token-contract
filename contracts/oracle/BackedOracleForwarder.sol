@@ -30,8 +30,9 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 contract BackedOracleForwarder is Ownable, AggregatorV2V3Interface {
     AggregatorV2V3Interface public _upstreamOracle;
 
-    constructor(address __upstreamOracle) {
+    constructor(address __upstreamOracle, address __owner) {
         _upstreamOracle = AggregatorV2V3Interface(__upstreamOracle);
+        _transferOwnership(__owner);
     }
 
     function version() external view returns (uint256) {

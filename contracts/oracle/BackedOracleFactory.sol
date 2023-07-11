@@ -98,9 +98,9 @@ contract BackedOracleFactory is Ownable {
         emit NewOracle(address(proxy));
 
         BackedOracleForwarder forwarder = new BackedOracleForwarder{salt: salt}(
-            address(proxy)
+            address(proxy),
+            address(timelockController)
         );
-        forwarder.transferOwnership(address(timelockController));
         emit NewOracleForwarder(address(forwarder));
 
         return address(forwarder);
