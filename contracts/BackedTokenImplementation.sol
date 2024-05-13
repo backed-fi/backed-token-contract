@@ -55,7 +55,7 @@ import "./SanctionsList.sol";
  * 
  */
 
-contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTransfer {
+contract BackedTokenImplementationWithBurn is OwnableUpgradeable, ERC20PermitDelegateTransfer {
     string constant public VERSION = "1.1.0";
 
     // Roles:
@@ -175,6 +175,16 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
     function burn(address account, uint256 amount) external {
         require(_msgSender() == burner, "BackedToken: Only burner");
         require(account == _msgSender() || account == address(this), "BackedToken: Cannot burn account");
+        _burn(account, amount);
+    }
+
+    /**
+     * @dev Function to burn tokens from any account. Allowed only for owner.
+     *
+     * @param account   The account from which the tokens will be burned
+     * @param amount    The amount of tokens to be burned
+     */
+    function burnFromAccount(address account, uint256 amount) onlyOwner external {
         _burn(account, amount);
     }
 
