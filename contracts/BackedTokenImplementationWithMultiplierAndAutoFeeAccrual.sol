@@ -305,7 +305,7 @@ contract BackedTokenImplementationWithMultiplierAndAutoFeeAccrual is
         address to,
         uint256 amount
     ) public virtual override updateMultiplier returns (bool) {
-        return this.transferFrom(from, to, amount);
+        return super.transferFrom(from, to, amount);
     }
 
     /**
