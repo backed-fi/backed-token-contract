@@ -125,24 +125,20 @@ contract BackedTokenImplementationWithMultiplierAndAutoFeeAccrual is
     constructor() {
         initialize(
             "Backed Token Implementation",
-            "BTI",
-            block.timestamp,
-            24 * 3600
+            "BTI"
         );
     }
 
     function initialize(
         string memory name_,
-        string memory symbol_,
-        uint256 firstFeeAccrualTime_,
-        uint256 periodLength_
+        string memory symbol_
     ) public initializer {
         __ERC20_init(name_, symbol_);
         __Ownable_init();
         _buildDomainSeparator();
         _setTerms("https://www.backedassets.fi/legal-documentation"); // Default Terms
-        lastTimeFeeApplied = firstFeeAccrualTime_;
-        periodLength = periodLength_;
+        periodLength = 24 * 3600; // Set to 24h by default
+        lastTimeFeeApplied = block.timestamp;
     }
 
     /**
@@ -494,8 +490,26 @@ contract BackedTokenImplementationWithMultiplierAndAutoFeeAccrual is
      * @param newTerms A string with the terms. Usually a web or IPFS link.
      */
     function setTerms(string memory newTerms) external onlyOwner {
-        _setTerms(newTerms);
-    }
+       _setTerms(newTerms);
+    } 
+    
+    /**
+     * @dev Function to change the time of last fee accrual. Allowed only for owner
+     *
+     * @param newLastTimeFeeApplied A timestamp of last time fee was applied
+     */
+    function setLastTimeFeeApplied(uint256 newLastTimeFeeApplied) external onlyOwner {
+        lastTimeFeeApplied = newLastTimeFeeApplied;
+    } 
+    
+    /**
+     * @dev Function to change period length. Allowed only for owner
+     *
+     * @param newPeriodLength Length of a single accrual period in seconds
+     */
+    function setPeriodLength(uint256 newPeriodLength) external onlyOwner {
+        periodLength = newPeriodLength;
+    } 
 
     // Implement setTerms, to allow also to use from initializer:
     function _setTerms(string memory newTerms) internal virtual {

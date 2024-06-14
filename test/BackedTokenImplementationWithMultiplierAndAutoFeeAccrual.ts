@@ -59,9 +59,7 @@ describe.only("BackedTokenImplementationWithMultiplierAndAutoFeeAccrual", functi
       'initialize',
       [
         "Backed Test Token",
-        "bTest",
-        baseTime,
-        accrualPeriodLength
+        "bTest"
       ]
     ));
     token = BackedTokenImplementationWithMultiplierAndAutoFeeAccrual__factory.connect(tokenProxy.address, owner.signer);
@@ -71,6 +69,8 @@ describe.only("BackedTokenImplementationWithMultiplierAndAutoFeeAccrual", functi
     await token.setMultiplierUpdater(owner.address);
     await token.setSanctionsList((await new SanctionsListMock__factory(owner.signer).deploy()).address);
     await token.updateFeePerPeriod(baseFeePerPeriod);
+    await token.setLastTimeFeeApplied(baseTime);
+    await token.setPeriodLength(accrualPeriodLength);
 
   });
   describe('#updateModifier', () => {
