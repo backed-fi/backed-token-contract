@@ -134,6 +134,7 @@ contract BackedTokenImplementationWithMultiplierAndAutoFeeAccrual is
         string memory symbol_
     ) public initializer {
         __ERC20_init(name_, symbol_);
+        __Multiplier_init();
         __Ownable_init();
         _buildDomainSeparator();
         _setTerms("https://www.backedassets.fi/legal-documentation"); // Default Terms
