@@ -3,7 +3,7 @@
 
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable-new/token/ERC20/ERC20Upgradeable.sol";
 
 /**
  * @dev Implementation of the {IERC20} interface.

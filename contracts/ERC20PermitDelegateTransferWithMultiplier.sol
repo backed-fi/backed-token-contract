@@ -24,7 +24,7 @@
 pragma solidity 0.8.9;
 
 import "./ERC20UpgradeableWithMultiplier.sol";
-import "@openzeppelin/contracts-upgradeable/utils/cryptography/ECDSAUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable-new/utils/cryptography/ECDSAUpgradeable.sol";
 
 /**
  * @dev 

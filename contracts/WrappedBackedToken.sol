@@ -36,8 +36,8 @@
 
 pragma solidity 0.8.9;
 
-import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable-new/token/ERC20/extensions/ERC4626Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable-new/access/OwnableUpgradeable.sol";
 import "./SanctionsList.sol";
 
 /**

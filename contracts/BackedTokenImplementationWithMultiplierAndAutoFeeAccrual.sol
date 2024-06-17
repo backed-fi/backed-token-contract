@@ -36,7 +36,7 @@
 
 pragma solidity 0.8.9;
 
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable-new/access/OwnableUpgradeable.sol";
 import "./ERC20PermitDelegateTransferWithMultiplier.sol";
 import "./SanctionsList.sol";
 
