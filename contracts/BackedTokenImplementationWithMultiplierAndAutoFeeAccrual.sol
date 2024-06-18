@@ -166,7 +166,7 @@ contract BackedTokenImplementationWithMultiplierAndAutoFeeAccrual is
     {
         periodsPassed = (block.timestamp - lastTimeFeeApplied) / periodLength;
         newMultiplier = multiplier();
-        if (feePerPeriod >= 0) {
+        if (feePerPeriod > 0) {
             for (uint256 index = 0; index < periodsPassed; index++) {
                 newMultiplier = (newMultiplier * (1e18 - feePerPeriod)) / 1e18;
             }
