@@ -3,7 +3,7 @@
 
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts-upgradeable-new/token/ERC20/ERC20Upgradeable.sol";
+import "./BackedTokenImplementation.sol";
 
 /**
  * @dev Implementation of the {IERC20} interface.
@@ -30,7 +30,7 @@ import "@openzeppelin/contracts-upgradeable-new/token/ERC20/ERC20Upgradeable.sol
  * functions have been added to mitigate the well-known issues around setting
  * allowances. See {IERC20-approve}.
  */
-contract ERC20UpgradeableWithMultiplier is ERC20Upgradeable {
+contract ERC20UpgradeableWithMultiplier is BackedTokenImplementation {
     mapping(address => uint256) private _shares;
 
     uint256 internal _totalShares;

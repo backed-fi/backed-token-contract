@@ -24,7 +24,6 @@
 pragma solidity 0.8.9;
 
 import "./ERC20UpgradeableWithMultiplier.sol";
-import "@openzeppelin/contracts-upgradeable-new/utils/cryptography/ECDSAUpgradeable.sol";
 
 /**
  * @dev 
@@ -38,69 +37,10 @@ import "@openzeppelin/contracts-upgradeable-new/utils/cryptography/ECDSAUpgradea
 */
 
 contract ERC20PermitDelegateTransferWithMultiplier is ERC20UpgradeableWithMultiplier {
-    mapping(address => uint256) public nonces;
-
-    // Calculating the Permit typehash:
-    bytes32 public constant PERMIT_TYPEHASH =
-        keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
-
-    // Calculating the Delegated Transfer typehash:
-    bytes32 public constant DELEGATED_TRANSFER_TYPEHASH =
-        keccak256("DELEGATED_TRANSFER(address owner,address to,uint256 value,uint256 nonce,uint256 deadline)");
 
     // Calculating the Delegated Transfer Shares typehash:
     bytes32 public constant DELEGATED_TRANSFER_SHARES_TYPEHASH =
         keccak256("DELEGATED_TRANSFER_SHARES(address owner,address to,uint256 value,uint256 nonce,uint256 deadline)");
-
-    // Immutable variable for Domain Separator:
-    // solhint-disable-next-line var-name-mixedcase
-    bytes32 public DOMAIN_SEPARATOR;
-
-    // A version number:
-    // solhint-disable-next-line var-name-mixedcase
-    string internal constant DOMAIN_SEPARATOR_VERSION = "1";
-
-    /**
-     * @dev Permit, approve via a sign message, using erc712.
-     */
-    function permit(
-        address owner,
-        address spender,
-        uint256 value,
-        uint256 deadline,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) public virtual {
-        require(block.timestamp <= deadline, "ERC20Permit: expired deadline");
-
-        bytes32 structHash = keccak256(abi.encode(PERMIT_TYPEHASH, owner, spender, value, _useNonce(owner), deadline));
-
-        _checkOwner(owner, structHash, v, r, s);
-
-        _approve(owner, spender, value);
-    }
-
-    /**
-     * @dev Delegated Transfer, transfer via a sign message, using erc712.
-     */
-    function delegatedTransfer(
-        address owner,
-        address to,
-        uint256 value,
-        uint256 deadline,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) public virtual {
-        require(block.timestamp <= deadline, "ERC20Permit: expired deadline");
-
-        bytes32 structHash = keccak256(abi.encode(DELEGATED_TRANSFER_TYPEHASH, owner, to, value, _useNonce(owner), deadline));
-
-        _checkOwner(owner, structHash, v, r, s);
-
-        _transfer(owner, to, value);
-    }
 
     /**
      * @dev Delegated Transfer Shares, transfer shares via a sign message, using erc712.
@@ -120,33 +60,6 @@ contract ERC20PermitDelegateTransferWithMultiplier is ERC20UpgradeableWithMultip
         _checkOwner(owner, structHash, v, r, s);
 
         _transferShares(owner, to, value);
-    }
-
-    /**
-     * @dev "Consume a nonce": return the current value and increment.
-     */
-    function _useNonce(address owner) internal virtual returns (uint256 current) {
-        current = nonces[owner];
-        nonces[owner]++;
-    }
-
-    function _checkOwner(address owner, bytes32 structHash, uint8 v, bytes32 r, bytes32 s) internal view {
-        bytes32 hash = ECDSAUpgradeable.toTypedDataHash(DOMAIN_SEPARATOR, structHash);
-
-        address signer = ECDSAUpgradeable.recover(hash, v, r, s);
-        require(signer == owner, "ERC20Permit: invalid signature");
-    }
-
-    function _buildDomainSeparator() internal {
-        DOMAIN_SEPARATOR = keccak256(
-            abi.encode(
-                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-                keccak256(bytes(name())),
-                keccak256(bytes(DOMAIN_SEPARATOR_VERSION)),
-                block.chainid,
-                address(this)
-            )
-        );
     }
 
     /**

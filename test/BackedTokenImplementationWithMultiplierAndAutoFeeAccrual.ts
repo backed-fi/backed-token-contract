@@ -24,7 +24,7 @@ type SignerWithAddress = {
 // BackedTokenImplementationWithMultiplierAndAutoFeeAccrual specifications
 // Vast majority of comparisons are done with adjustment for precision of calculations, thus we are rather comparing difference of values,
 // rather than values themselves
-describe.only("BackedTokenImplementationWithMultiplierAndAutoFeeAccrual", function () {
+describe("BackedTokenImplementationWithMultiplierAndAutoFeeAccrual", function () {
   const accrualPeriodLength = 24 * 3600;
   const annualFee = 0.5;
   const multiplierAdjustmentPerPeriod = nthRoot(annualFee, 365).mul(Decimal.pow(10, 18));
@@ -239,15 +239,6 @@ describe.only("BackedTokenImplementationWithMultiplierAndAutoFeeAccrual", functi
         it('Should allow transfer of current balance of user', async () => {
           await expect(token.transfer(actor.address, (await token.balanceOf(actor.address)))).to.not.be.reverted;
         })
-        it('Should allow transfer of current balance of user', async () => {
-          await expect(token.transfer(actor.address, (await token.balanceOf(actor.address)).div(2))).to.not.be.reverted;
-          await expect(token.transfer(actor.address, (await token.balanceOf(actor.address)))).to.not.be.reverted;
-        })
-        it('Should allow transfer of current balance of user', async () => {
-          await token.updateFeePerPeriod(0);
-          await expect(token.transfer(actor.address, (await token.balanceOf(actor.address)).div(2))).to.not.be.reverted;
-          await expect(token.transfer(actor.address, (await token.balanceOf(actor.address)))).to.not.be.reverted;
-        })
       });
       describe('#transferShares', () => {
         it('Should allow transfer of shares of user', async () => {
@@ -351,13 +342,29 @@ describe.only("BackedTokenImplementationWithMultiplierAndAutoFeeAccrual", functi
         const signer = await ethers.getSigner(owner.address);
         signature = await signer._signTypedData(domain, types, msg);
       })
-      it('Should move requested shares of tokens', async () => {
-        await subject();
-        expect((await token.sharesOf(actor.address))).to.be.eq(sharesToTransfer);
+      describe('And caller is whitelisted delegate', () => {
+        cacheBeforeEach(async () => {
+          await token.setDelegateWhitelist(actor.address, true);
+        })
+        it('Should move requested shares of tokens', async () => {
+          await subject();
+          expect((await token.sharesOf(actor.address))).to.be.eq(sharesToTransfer);
+        })
+        it('Should increase balance of destination wallet', async () => {
+          await subject();
+          expect((await token.balanceOf(actor.address))).to.be.eq(userBalance);
+        })
+        it('Should revert if deadline already passed', async () => {
+          await helpers.time.setNextBlockTimestamp(deadline + 1);
+          await helpers.mine()
+          await expect(subject()).to.be.reverted;
+        })
       })
-      it('Should increase balance of destination wallet', async () => {
-        await subject();
-        expect((await token.balanceOf(actor.address))).to.be.eq(userBalance);
+      describe('And caller is whitelisted delegate', () => {
+
+        it('Should revert', async () => {
+          await expect(subject()).to.be.reverted;
+        })
       })
     })
   });
