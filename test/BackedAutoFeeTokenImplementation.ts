@@ -1,7 +1,7 @@
 import { ProxyAdmin__factory } from '../typechain/factories/ProxyAdmin__factory';
 import { ProxyAdmin } from '../typechain/ProxyAdmin';
-import { BackedTokenImplementationWithMultiplierAndAutoFeeAccrual__factory } from '../typechain/factories/BackedTokenImplementationWithMultiplierAndAutoFeeAccrual__factory';
-import { BackedTokenImplementationWithMultiplierAndAutoFeeAccrual } from '../typechain/BackedTokenImplementationWithMultiplierAndAutoFeeAccrual';
+import { BackedAutoFeeTokenImplementation__factory } from '../typechain/factories/BackedAutoFeeTokenImplementation__factory';
+import { BackedAutoFeeTokenImplementation } from '../typechain/BackedAutoFeeTokenImplementation';
 import * as helpers from "@nomicfoundation/hardhat-network-helpers";
 
 import { expect } from "chai";
@@ -21,10 +21,10 @@ type SignerWithAddress = {
   address: string;
 };
 
-// BackedTokenImplementationWithMultiplierAndAutoFeeAccrual specifications
+// BackedAutoFeeTokenImplementation specifications
 // Vast majority of comparisons are done with adjustment for precision of calculations, thus we are rather comparing difference of values,
 // rather than values themselves
-describe("BackedTokenImplementationWithMultiplierAndAutoFeeAccrual", function () {
+describe("BackedAutoFeeTokenImplementation", function () {
   const accrualPeriodLength = 24 * 3600;
   const annualFee = 0.5;
   const multiplierAdjustmentPerPeriod = nthRoot(annualFee, 365).mul(Decimal.pow(10, 18));
@@ -34,7 +34,7 @@ describe("BackedTokenImplementationWithMultiplierAndAutoFeeAccrual", function ()
   const tokenSymbol = "bAAPL";
 
   // General config:
-  let token: BackedTokenImplementationWithMultiplierAndAutoFeeAccrual;
+  let token: BackedAutoFeeTokenImplementation;
   let sanctionsList: SanctionsListMock;
   let proxyAdmin: ProxyAdmin;
   let accounts: Signer[];
@@ -66,7 +66,7 @@ describe("BackedTokenImplementationWithMultiplierAndAutoFeeAccrual", function ()
 
     await helpers.time.setNextBlockTimestamp(baseTime);
 
-    const tokenImplementationFactory = new BackedTokenImplementationWithMultiplierAndAutoFeeAccrual__factory(owner.signer);
+    const tokenImplementationFactory = new BackedAutoFeeTokenImplementation__factory(owner.signer);
     const tokenImplementation = await tokenImplementationFactory.deploy();
     const proxyAdminFactory = new ProxyAdmin__factory(owner.signer)
     proxyAdmin = await proxyAdminFactory.deploy();
@@ -77,7 +77,7 @@ describe("BackedTokenImplementationWithMultiplierAndAutoFeeAccrual", function ()
         tokenSymbol
       ]
     ));
-    token = BackedTokenImplementationWithMultiplierAndAutoFeeAccrual__factory.connect(tokenProxy.address, owner.signer);
+    token = BackedAutoFeeTokenImplementation__factory.connect(tokenProxy.address, owner.signer);
     await token.setMinter(owner.address);
     await token.setBurner(owner.address);
     await token.setPauser(owner.address);

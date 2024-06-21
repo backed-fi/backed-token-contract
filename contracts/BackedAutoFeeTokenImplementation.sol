@@ -56,7 +56,7 @@ import "./SanctionsList.sol";
  *
  */
 
-contract BackedTokenImplementationWithMultiplierAndAutoFeeAccrual is ERC20PermitDelegateTransferWithMultiplier
+contract BackedAutoFeeTokenImplementation is ERC20PermitDelegateTransferWithMultiplier
 {
     // V2
 
