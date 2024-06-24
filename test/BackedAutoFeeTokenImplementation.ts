@@ -71,12 +71,13 @@ describe("BackedAutoFeeTokenImplementation", function () {
     const proxyAdminFactory = new ProxyAdmin__factory(owner.signer)
     proxyAdmin = await proxyAdminFactory.deploy();
     const tokenProxy = await new BackedTokenProxy__factory(owner.signer).deploy(tokenImplementation.address, proxyAdmin.address, tokenImplementation.interface.encodeFunctionData(
-      'initialize(string,string,uint256,uint256)',
+      'initialize(string,string,uint256,uint256,uint256)',
       [
         tokenName,
         tokenSymbol,
         24 * 3600,
-        baseTime
+        baseTime,
+        baseFeePerPeriod
       ]
     ));
     token = BackedAutoFeeTokenImplementation__factory.connect(tokenProxy.address, owner.signer);
@@ -86,7 +87,6 @@ describe("BackedAutoFeeTokenImplementation", function () {
     await token.setMultiplierUpdater(owner.address);
     sanctionsList = await new SanctionsListMock__factory(blacklister.signer).deploy();
     await token.setSanctionsList(sanctionsList.address);
-    await token.updateFeePerPeriod(baseFeePerPeriod);
 
     // Chain Id
     const network = await ethers.provider.getNetwork();

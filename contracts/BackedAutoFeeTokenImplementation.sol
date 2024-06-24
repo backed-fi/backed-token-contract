@@ -114,38 +114,54 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     }
 
     // Initializers:
-
     function initialize(
         string memory name_,
         string memory symbol_
     ) public virtual override {
-        _initialize(name_, symbol_, 24 * 3600, block.timestamp);
+        super.initialize(name_, symbol_);
+        _initialize_auto_fee(24 * 3600, block.timestamp, 0);
     }
 
     function initialize(
         string memory name_,
         string memory symbol_,
         uint256 _periodLength,
-        uint256 _lastTimeFeeApplied
+        uint256 _lastTimeFeeApplied,
+        uint256 _feePerPeriod
     ) public virtual {
-        _initialize(name_, symbol_, _periodLength, _lastTimeFeeApplied);
+        super.initialize(name_, symbol_);
+        _initialize_auto_fee(_periodLength, _lastTimeFeeApplied, _feePerPeriod);
+    }
+
+    function initialize_v2(
+        uint256 _periodLength,
+        uint256 _lastTimeFeeApplied,
+        uint256 _feePerPeriod
+    ) public virtual {
+        _initialize_auto_fee(_periodLength, _lastTimeFeeApplied, _feePerPeriod);
     }
 
     function _initialize(
         string memory name_,
-        string memory symbol_,
-        uint256 _periodLength,
-        uint256 _lastTimeFeeApplied
+        string memory symbol_
     ) public virtual initializer {
         __ERC20_init(name_, symbol_);
         __Ownable_init();
         _buildDomainSeparator();
         _setTerms("https://www.backedassets.fi/legal-documentation"); // Default Terms
+    }
+
+    function _initialize_auto_fee(
+        uint256 _periodLength,
+        uint256 _lastTimeFeeApplied,
+        uint256 _feePerPeriod
+    ) public virtual {
+        require(lastTimeFeeApplied == 0, "BackedAutoFeeTokenImplementation already initialized");
 
         multiplier = 1e18;
-
         periodLength = _periodLength;
         lastTimeFeeApplied = _lastTimeFeeApplied;
+        feePerPeriod = _feePerPeriod;
     }
 
     /**

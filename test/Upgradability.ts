@@ -137,7 +137,7 @@ describe("Upgrade from v1.0.0 to v1.1.0", () => {
   });
 });
 
-describe("Upgrade from v1.1.0 to v1.2.0", () => {
+describe("Upgrade from v1.1.0 to auto fee", () => {
   let implementationV2: BackedAutoFeeTokenImplementation;
   let tokenV2: BackedAutoFeeTokenImplementation;
   let tokenV1: BackedTokenImplementation;
@@ -165,16 +165,17 @@ describe("Upgrade from v1.1.0 to v1.2.0", () => {
       await ethers.getContractFactory("BackedAutoFeeTokenImplementation")
     ).deploy();
 
-    await proxyAdmin.upgrade(tokenV1.address, implementationV2.address);
+    await proxyAdmin.upgradeAndCall(tokenV1.address, implementationV2.address, implementationV2.interface.encodeFunctionData(
+      'initialize_v2', [
+      24 * 3600,
+      Math.floor(Date.now() / 1000) - 3600,
+      0
+    ]));
 
     tokenV2 = await ethers.getContractAt(
       "BackedAutoFeeTokenImplementation",
       tokenV1.address
     );
-    await tokenV2.setMultiplierUpdater(owner.address);
-    await tokenV2.setLastTimeFeeApplied(Math.floor(Date.now() / 1000) - 3600);
-    await tokenV2.setPeriodLength(24 * 3600);
-    await tokenV2.updateMultiplierValue(ethers.BigNumber.from(10).pow(18), 0)
   };
 
   beforeEach(async () => {
