@@ -133,22 +133,13 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         _initialize_auto_fee(_periodLength, _lastTimeFeeApplied, _feePerPeriod);
     }
 
+    // Should it be only callable by authorized address?
     function initialize_v2(
         uint256 _periodLength,
         uint256 _lastTimeFeeApplied,
         uint256 _feePerPeriod
     ) public virtual {
         _initialize_auto_fee(_periodLength, _lastTimeFeeApplied, _feePerPeriod);
-    }
-
-    function _initialize(
-        string memory name_,
-        string memory symbol_
-    ) public virtual initializer {
-        __ERC20_init(name_, symbol_);
-        __Ownable_init();
-        _buildDomainSeparator();
-        _setTerms("https://www.backedassets.fi/legal-documentation"); // Default Terms
     }
 
     function _initialize_auto_fee(

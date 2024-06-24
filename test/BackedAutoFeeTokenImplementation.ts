@@ -8,6 +8,8 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { BigNumber, Signer } from "ethers";
 import {
+  BackedTokenImplementation__factory,
+  BackedTokenProxy,
   BackedTokenProxy__factory,
   SanctionsListMock,
   SanctionsListMock__factory,
@@ -35,6 +37,7 @@ describe("BackedAutoFeeTokenImplementation", function () {
 
   // General config:
   let token: BackedAutoFeeTokenImplementation;
+  let tokenImplementation: BackedAutoFeeTokenImplementation;
   let sanctionsList: SanctionsListMock;
   let proxyAdmin: ProxyAdmin;
   let accounts: Signer[];
@@ -67,7 +70,7 @@ describe("BackedAutoFeeTokenImplementation", function () {
     await helpers.time.setNextBlockTimestamp(baseTime);
 
     const tokenImplementationFactory = new BackedAutoFeeTokenImplementation__factory(owner.signer);
-    const tokenImplementation = await tokenImplementationFactory.deploy();
+    tokenImplementation = await tokenImplementationFactory.deploy();
     const proxyAdminFactory = new ProxyAdmin__factory(owner.signer)
     proxyAdmin = await proxyAdminFactory.deploy();
     const tokenProxy = await new BackedTokenProxy__factory(owner.signer).deploy(tokenImplementation.address, proxyAdmin.address, tokenImplementation.interface.encodeFunctionData(
@@ -81,9 +84,9 @@ describe("BackedAutoFeeTokenImplementation", function () {
       ]
     ));
     token = BackedAutoFeeTokenImplementation__factory.connect(tokenProxy.address, owner.signer);
-    await token.setMinter(owner.address);
-    await token.setBurner(owner.address);
-    await token.setPauser(owner.address);
+    await token.setMinter(minter.address);
+    await token.setBurner(burner.address);
+    await token.setPauser(pauser.address);
     await token.setMultiplierUpdater(owner.address);
     sanctionsList = await new SanctionsListMock__factory(blacklister.signer).deploy();
     await token.setSanctionsList(sanctionsList.address);
@@ -97,6 +100,50 @@ describe("BackedAutoFeeTokenImplementation", function () {
     await helpers.reset();
   })
 
+  describe('#initializer_v2', () => {
+    it("Cannot initialize twice", async function () {
+      await expect(
+        token.connect(owner.signer).initialize_v2(
+          24 * 3600,
+          baseTime,
+          baseFeePerPeriod
+        )
+      ).to.be.revertedWith("BackedAutoFeeTokenImplementation already initialized");
+    });
+    describe('when being called on contract initialized to v1', () => {
+      let token: BackedAutoFeeTokenImplementation;
+      cacheBeforeEach(async () => {
+        const oldTokenImplementationFactory = new BackedTokenImplementation__factory(owner.signer);
+        const oldTokenImplementation = await oldTokenImplementationFactory.deploy();
+        const tokenProxy = await new BackedTokenProxy__factory(owner.signer).deploy(oldTokenImplementation.address, proxyAdmin.address, oldTokenImplementation.interface.encodeFunctionData(
+          'initialize',
+          [
+            tokenName,
+            tokenSymbol
+          ]
+        ));
+        token = BackedAutoFeeTokenImplementation__factory.connect(tokenProxy.address, owner.signer);
+      });
+
+      it('Should be able to upgrade with initialize_v2 method', async () => {
+        await proxyAdmin.upgradeAndCall(
+          token.address,
+          tokenImplementation.address,
+          tokenImplementation.interface.encodeFunctionData(
+            'initialize_v2',
+            [
+              24 * 3600,
+              baseTime,
+              baseFeePerPeriod
+            ]
+          )
+        )
+        expect(await token.multiplier()).to.be.eq(ethers.BigNumber.from(10).pow(18));
+        expect(await token.lastTimeFeeApplied()).to.be.eq(baseTime);
+        expect(await token.feePerPeriod()).to.be.eq(baseFeePerPeriod);
+      })
+    });
+  })
   describe('#getCurrentMultiplier', () => {
     describe('when time moved by 365 days forward', () => {
       const periodsPassed = 365;
@@ -190,13 +237,62 @@ describe("BackedAutoFeeTokenImplementation", function () {
       })
     })
   })
+  describe('#transfer', () => {
+    describe('And transfering to zero address', () => {
+      const subject = (toAddress: string) => token.transfer(toAddress, 1)
+      it('should revert transaction', async () => {
+        await expect(subject(ethers.constants.AddressZero)).to.be.revertedWith("ERC20: transfer to the zero address")
+      })
+    })
+  })
+  describe('#transferFrom', () => {
+    describe('And transfering from zero address', () => {
+      let zeroSigner: Signer;
+      cacheBeforeEach(async () => {
+        await helpers.impersonateAccount(ethers.constants.AddressZero);
+        zeroSigner = await ethers.getSigner(ethers.constants.AddressZero)
+      })
+      const subject = (toAddress: string) => token.connect(zeroSigner).transfer(toAddress, 1)
+      it('should revert transaction', async () => {
+        await expect(subject(owner.address)).to.be.revertedWith("ERC20: transfer from the zero address")
+      })
+    })
+  })
+  describe('#mint', () => {
+    describe('And minting to zero address', () => {
+      const subject = (toAddress: string) => token.connect(minter.signer).mint(toAddress, 1)
+      it('should revert transaction', async () => {
+        await expect(subject(ethers.constants.AddressZero)).to.be.revertedWith("ERC20: mint to the zero address")
+      })
+    })
+  })
+  describe('#burn', () => {
+    describe('And burning from zero address', () => {
+      let zeroSigner: Signer;
+      cacheBeforeEach(async () => {
+        await helpers.impersonateAccount(ethers.constants.AddressZero);
+        zeroSigner = await ethers.getSigner(ethers.constants.AddressZero);
+        await token.setBurner(ethers.constants.AddressZero);
+      })
+      const subject = (fromAddress: string) => token.connect(zeroSigner).burn(fromAddress, 1)
+      it('should revert transaction', async () => {
+        await expect(subject(ethers.constants.AddressZero)).to.be.revertedWith("ERC20: burn from the zero address")
+      })
+    })
+    describe('And burning from address that has no sufficient balance', () => {
+      const subject = (fromAddress: string) => token.connect(burner.signer).burn(fromAddress, 1)
+      it('should revert transaction', async () => {
+        await expect(subject(burner.address)).to.be.revertedWith("ERC20: burn amount exceeds balance")
+      })
+    })
+  })
   describe('#updateMultiplier', () => {
     describe('when time moved by 365 days forward', () => {
       const periodsPassed = 365;
       const baseMintedAmount = ethers.BigNumber.from(10).pow(18);
       let mintedShares: BigNumber;
       cacheBeforeEach(async () => {
-        await token.mint(owner.address, baseMintedAmount);
+        await token.connect(minter.signer).mint(owner.address, baseMintedAmount);
         mintedShares = await token.sharesOf(owner.address);
         await helpers.time.setNextBlockTimestamp(baseTime + periodsPassed * accrualPeriodLength);
         await helpers.mine()
@@ -227,6 +323,13 @@ describe("BackedAutoFeeTokenImplementation", function () {
         })
       });
 
+      describe('#getSharesByUnderlyingAmount', () => {
+        it('Should increase amount of shares neeeded for given underlying amount', async () => {
+          const amount = 1000;
+          expect((await token.getSharesByUnderlyingAmount(amount))).to.eq(ethers.BigNumber.from(amount / annualFee))
+        })
+      });
+
       describe('#totalSupply', () => {
         it('Should decrease total supply of the token by the fee accrued in 365 days', async () => {
           expect((await token.totalSupply()).sub(baseMintedAmount.mul(annualFee * 100).div(100)).abs()).to.lte(
@@ -251,7 +354,7 @@ describe("BackedAutoFeeTokenImplementation", function () {
       describe('#mint', () => {
         const newlyMintedTokens = ethers.BigNumber.from(10).pow(18)
         cacheBeforeEach(async () => {
-          await token.mint(actor.address, newlyMintedTokens);
+          await token.connect(minter.signer).mint(actor.address, newlyMintedTokens);
         })
         it('Should mint requested number of tokens', async () => {
           expect((await token.balanceOf(actor.address)).sub(newlyMintedTokens).abs()).to.be.lte(1);
@@ -265,7 +368,7 @@ describe("BackedAutoFeeTokenImplementation", function () {
   describe('#transferShares', () => {
     const baseMintedAmount = ethers.BigNumber.from(10).pow(18);
     cacheBeforeEach(async () => {
-      await token.mint(owner.address, baseMintedAmount);
+      await token.connect(minter.signer).mint(owner.address, baseMintedAmount);
     })
     describe('When transfering shares to another account', () => {
       const sharesToTransfer = ethers.BigNumber.from(10).pow(18);
@@ -287,7 +390,7 @@ describe("BackedAutoFeeTokenImplementation", function () {
   describe('#delegatedTransferShares', () => {
     const baseMintedAmount = ethers.BigNumber.from(10).pow(18);
     cacheBeforeEach(async () => {
-      await token.mint(owner.address, baseMintedAmount);
+      await token.connect(minter.signer).mint(owner.address, baseMintedAmount);
     })
     describe('When transfering shares from another account', () => {
       const sharesToTransfer = ethers.BigNumber.from(10).pow(18);
