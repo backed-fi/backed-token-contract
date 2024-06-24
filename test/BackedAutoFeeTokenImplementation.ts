@@ -93,6 +93,9 @@ describe("BackedAutoFeeTokenImplementation", function () {
     chainId = BigNumber.from(network.chainId);
   });
 
+  this.afterAll(async () => {
+    await helpers.reset();
+  })
 
   describe('#getCurrentMultiplier', () => {
     describe('when time moved by 365 days forward', () => {

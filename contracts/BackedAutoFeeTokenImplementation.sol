@@ -54,7 +54,7 @@ import "./SanctionsList.sol";
 
 contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     // Calculating the Delegated Transfer Shares typehash:
-    bytes32 public constant DELEGATED_TRANSFER_SHARES_TYPEHASH =
+    bytes32 constant public DELEGATED_TRANSFER_SHARES_TYPEHASH =
         keccak256(
             "DELEGATED_TRANSFER_SHARES(address owner,address to,uint256 value,uint256 nonce,uint256 deadline)"
         );
