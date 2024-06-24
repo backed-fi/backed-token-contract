@@ -71,10 +71,12 @@ describe("BackedAutoFeeTokenImplementation", function () {
     const proxyAdminFactory = new ProxyAdmin__factory(owner.signer)
     proxyAdmin = await proxyAdminFactory.deploy();
     const tokenProxy = await new BackedTokenProxy__factory(owner.signer).deploy(tokenImplementation.address, proxyAdmin.address, tokenImplementation.interface.encodeFunctionData(
-      'initialize',
+      'initialize(string,string,uint256,uint256)',
       [
         tokenName,
-        tokenSymbol
+        tokenSymbol,
+        24 * 3600,
+        baseTime
       ]
     ));
     token = BackedAutoFeeTokenImplementation__factory.connect(tokenProxy.address, owner.signer);
@@ -85,8 +87,6 @@ describe("BackedAutoFeeTokenImplementation", function () {
     sanctionsList = await new SanctionsListMock__factory(blacklister.signer).deploy();
     await token.setSanctionsList(sanctionsList.address);
     await token.updateFeePerPeriod(baseFeePerPeriod);
-    await token.setLastTimeFeeApplied(baseTime);
-    await token.setPeriodLength(accrualPeriodLength);
 
     // Chain Id
     const network = await ethers.provider.getNetwork();
@@ -373,7 +373,7 @@ describe("BackedAutoFeeTokenImplementation", function () {
 
   it("Cannot initialize twice", async function () {
     await expect(
-      token.connect(owner.signer).initialize("test1", "test2")
+      token.connect(owner.signer)['initialize(string,string)']("test1", "test2")
     ).to.be.revertedWith("Initializable: contract is already initialized");
   });
 

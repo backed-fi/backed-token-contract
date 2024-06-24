@@ -37,28 +37,27 @@
 pragma solidity 0.8.9;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "./ERC20PermitDelegateTransferWithMultiplier.sol";
+import "./BackedTokenImplementation.sol";
 import "./SanctionsList.sol";
 
 /**
  * @dev
  *
  * This token contract is following the ERC20 standard.
- * It inherits ERC20PermitDelegateTransferWithMultiplier.sol, which extends the basic ERC20 to also allow permit, delegateTransfer and delegateTransferShares EIP-712 functionality.
- * Enforces Sanctions List via the Chainalysis standard interface.
- * The contract contains four roles:
- *  - A minter, that can mint new tokens.
- *  - A burner, that can burn its own tokens, or contract's tokens.
- *  - A pauser, that can pause or restore all transfers in the contract.
+ * It inherits BackedTokenImplementation.sol, which is base Backed token implementation. BackedAutoFeeTokenImplementation extends it
+ * with logic of multiplier, which is used for rebasing logic of the token, thus becoming rebase token itself. Additionally, it contains
+ * mechanism, which changes this multiplier per configured fee periodically, on defined period length.
+ * It contains one additional role:
  *  - A multiplierUpdated, that can update value of a multiplier.
- *  - An owner, that can set the four above, and also the sanctionsList pointer.
- * The owner can also set who can use the EIP-712 functionality, either specific accounts via a whitelist, or everyone.
  *
  */
 
-contract BackedAutoFeeTokenImplementation is ERC20PermitDelegateTransferWithMultiplier
-{
-    // V2
+contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
+    // Calculating the Delegated Transfer Shares typehash:
+    bytes32 public constant DELEGATED_TRANSFER_SHARES_TYPEHASH =
+        keccak256(
+            "DELEGATED_TRANSFER_SHARES(address owner,address to,uint256 value,uint256 nonce,uint256 deadline)"
+        );
 
     // Roles:
     address public multiplierUpdater;
@@ -68,30 +67,93 @@ contract BackedAutoFeeTokenImplementation is ERC20PermitDelegateTransferWithMult
     uint256 public feePerPeriod; // in 1e18 precision
     uint256 public periodLength;
 
+    /**
+     * @dev Defines ratio between a single share of a token to balance of a token.
+     * Defined in 1e18 precision.
+     *
+     */
+    uint256 public multiplier;
+
+    mapping(address => uint256) private _shares;
+
+    uint256 internal _totalShares;
+
     // Events:
+
+    /**
+     * @dev Emitted when multiplier updater is changed
+     */
     event NewMultiplierUpdater(address indexed newMultiplierUpdater);
+
+    /**
+     * @dev Emitted when `value` token shares are moved from one account (`from`) to
+     * another (`to`).
+     *
+     * Note that `value` may be zero.
+     */
+    event TransferShares(
+        address indexed from,
+        address indexed to,
+        uint256 value
+    );
+
+    /**
+     * @dev Emitted when multiplier value is updated
+     */
+    event MultiplierUpdated(uint256 value);
+
+    // Modifiers:
 
     modifier updateMultiplier() {
         (uint256 newMultiplier, uint256 periodsPassed) = getCurrentMultiplier();
         lastTimeFeeApplied = lastTimeFeeApplied + periodLength * periodsPassed;
-        if (multiplier() != newMultiplier) {
+        if (multiplier != newMultiplier) {
             _updateMultiplier(newMultiplier);
         }
         _;
     }
 
+    // Initializers:
+
     function initialize(
         string memory name_,
         string memory symbol_
-    ) override public virtual initializer {
+    ) public virtual override {
+        _initialize(name_, symbol_, 24 * 3600, block.timestamp);
+    }
+
+    function initialize(
+        string memory name_,
+        string memory symbol_,
+        uint256 _periodLength,
+        uint256 _lastTimeFeeApplied
+    ) public virtual {
+        _initialize(name_, symbol_, _periodLength, _lastTimeFeeApplied);
+    }
+
+    function _initialize(
+        string memory name_,
+        string memory symbol_,
+        uint256 _periodLength,
+        uint256 _lastTimeFeeApplied
+    ) public virtual initializer {
         __ERC20_init(name_, symbol_);
         __Ownable_init();
         _buildDomainSeparator();
         _setTerms("https://www.backedassets.fi/legal-documentation"); // Default Terms
-        __Multiplier_init();
-        
-        periodLength = 24 * 3600; // Set to 24h by default
-        lastTimeFeeApplied = block.timestamp;
+
+        multiplier = 1e18;
+
+        periodLength = _periodLength;
+        lastTimeFeeApplied = _lastTimeFeeApplied;
+    }
+
+    /**
+     * @dev See {IERC20-totalSupply}.
+     */
+    function totalSupply() public view virtual override returns (uint256) {
+        (uint256 newMultiplier, ) = getCurrentMultiplier();
+        return (_totalShares * newMultiplier) / 1e18;
     }
 
     /**
@@ -100,15 +162,13 @@ contract BackedAutoFeeTokenImplementation is ERC20PermitDelegateTransferWithMult
     function balanceOf(
         address account
     ) public view virtual override returns (uint256) {
-        (uint256 multiplier, ) = getCurrentMultiplier();
-        return (sharesOf(account) * multiplier) / 1e18;
+        (uint256 newMultiplier, ) = getCurrentMultiplier();
+        return (sharesOf(account) * newMultiplier) / 1e18;
     }
 
     /**
      * @dev Retrieves most up to date value of multiplier
      *
-     * Note Probably it should be renamed into multiplier and allow getting stored version of multiplier
-     * via getStoredMultiplier() method
      */
     function getCurrentMultiplier()
         public
@@ -117,7 +177,7 @@ contract BackedAutoFeeTokenImplementation is ERC20PermitDelegateTransferWithMult
         returns (uint256 newMultiplier, uint256 periodsPassed)
     {
         periodsPassed = (block.timestamp - lastTimeFeeApplied) / periodLength;
-        newMultiplier = multiplier();
+        newMultiplier = multiplier;
         if (feePerPeriod > 0) {
             for (uint256 index = 0; index < periodsPassed; index++) {
                 newMultiplier = (newMultiplier * (1e18 - feePerPeriod)) / 1e18;
@@ -126,50 +186,34 @@ contract BackedAutoFeeTokenImplementation is ERC20PermitDelegateTransferWithMult
     }
 
     /**
-     * @dev See {IERC20-totalSupply}.
+     * @dev Returns amount of shares owned by given account
      */
-    function totalSupply() public view virtual override returns (uint256) {
-        (uint256 multiplier, ) = getCurrentMultiplier();
-        return _totalShares * multiplier / 1e18;
+    function sharesOf(address account) public view virtual returns (uint256) {
+        return _shares[account];
     }
 
     /**
-     * @dev Perform an intended transfer on one account's behalf, from another account,
-     *  who actually pays fees for the transaction. Allowed only if the sender
-     *  is whitelisted, or the delegateMode is set to true
-     *
-     * @param owner       The account that provided the signature and from which the tokens will be taken
-     * @param to          The account that will receive the tokens
-     * @param value       The amount of tokens to transfer
-     * @param deadline    Expiration time, seconds since the epoch
-     * @param v           v part of the signature
-     * @param r           r part of the signature
-     * @param s           s part of the signature
+     * @return the amount of shares that corresponds to `_underlyingAmount` underlying amount.
      */
-    function delegatedTransfer(
-        address owner,
-        address to,
-        uint256 value,
-        uint256 deadline,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) public override updateMultiplier {
-        super.delegatedTransfer(owner, to, value, deadline, v, r, s);
+    function getSharesByUnderlyingAmount(
+        uint256 _underlyingAmount
+    ) public view returns (uint256) {
+        (uint256 newMultiplier, ) = getCurrentMultiplier();
+        return _getSharesByUnderlyingAmount(_underlyingAmount, newMultiplier);
     }
-    
+
     /**
-     * @dev Perform an intended shares transfer on one account's behalf, from another account,
-     *  who actually pays fees for the transaction. Allowed only if the sender
-     *  is whitelisted, or the delegateMode is set to true
-     *
-     * @param owner       The account that provided the signature and from which the tokens will be taken
-     * @param to          The account that will receive the tokens
-     * @param value       The amount of token shares to transfer
-     * @param deadline    Expiration time, seconds since the epoch
-     * @param v           v part of the signature
-     * @param r           r part of the signature
-     * @param s           s part of the signature
+     * @return the amount of underlying that corresponds to `_sharesAmount` token shares.
+     */
+    function getUnderlyingAmountByShares(
+        uint256 _sharesAmount
+    ) public view returns (uint256) {
+        (uint256 newMultiplier, ) = getCurrentMultiplier();
+        return _getUnderlyingAmountByShares(_sharesAmount, newMultiplier);
+    }
+
+    /**
+     * @dev Delegated Transfer Shares, transfer shares via a sign message, using erc712.
      */
     function delegatedTransferShares(
         address owner,
@@ -179,23 +223,23 @@ contract BackedAutoFeeTokenImplementation is ERC20PermitDelegateTransferWithMult
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) public virtual override allowedDelegate updateMultiplier {
-        super.delegatedTransferShares(owner, to, value, deadline, v, r, s);
-    }
+    ) public virtual allowedDelegate {
+        require(block.timestamp <= deadline, "ERC20Permit: expired deadline");
 
-    /**
-     * @dev See {IERC20-transfer}.
-     *
-     * Requirements:
-     *
-     * - `to` cannot be the zero address.
-     * - the caller must have a balance of at least `amount`.
-     */
-    function transfer(
-        address to,
-        uint256 amount
-    ) public virtual override updateMultiplier returns (bool) {
-        return super.transfer(to, amount);
+        bytes32 structHash = keccak256(
+            abi.encode(
+                DELEGATED_TRANSFER_SHARES_TYPEHASH,
+                owner,
+                to,
+                value,
+                _useNonce(owner),
+                deadline
+            )
+        );
+        _checkOwner(owner, structHash, v, r, s);
+
+        uint256 amount = _getUnderlyingAmountByShares(value, multiplier);
+        _transfer(owner, to, amount);
     }
 
     /**
@@ -209,64 +253,11 @@ contract BackedAutoFeeTokenImplementation is ERC20PermitDelegateTransferWithMult
     function transferShares(
         address to,
         uint256 sharesAmount
-    ) public virtual override updateMultiplier returns (bool) {
-        return super.transferShares(to, sharesAmount);
-    }
-
-    /**
-     * @dev See {IERC20-transferFrom}.
-     *
-     * Emits an {Approval} event indicating the updated allowance. This is not
-     * required by the EIP. See the note at the beginning of {ERC20}.
-     *
-     * NOTE: Does not update the allowance if the current allowance
-     * is the maximum `uint256`.
-     *
-     * Requirements:
-     *
-     * - `from` and `to` cannot be the zero address.
-     * - `from` must have a balance of at least `amount`.
-     * - the caller must have allowance for ``from``'s tokens of at least
-     * `amount`.
-     */
-    function transferFrom(
-        address from,
-        address to,
-        uint256 amount
-    ) public virtual override updateMultiplier returns (bool) {
-        return super.transferFrom(from, to, amount);
-    }
-
-    /**
-     * @dev Function to mint tokens. Allowed only for minter
-     *
-     * @param account   The address that will receive the minted tokens
-     * @param amount    The amount of tokens to mint
-     */
-    function mint(
-        address account,
-        uint256 amount
-    ) override external virtual updateMultiplier {
-        require(_msgSender() == minter, "BackedToken: Only minter");
-        uint256 sharesAmount = getSharesByUnderlyingAmount(amount);
-        _mintShares(account, sharesAmount);
-    }
-
-    /**
-     * @dev Function to burn tokens. Allowed only for burner. The burned tokens
-     *  must be from the burner (msg.sender), or from the contract itself
-     *
-     * @param account   The account from which the tokens will be burned
-     * @param amount    The amount of tokens to be burned
-     */
-    function burn(address account, uint256 amount) override external virtual updateMultiplier {
-        require(_msgSender() == burner, "BackedToken: Only burner");
-        require(
-            account == _msgSender() || account == address(this),
-            "BackedToken: Cannot burn account"
-        );
-        uint256 sharesAmount = getSharesByUnderlyingAmount(amount);
-        _burnShares(account, sharesAmount);
+    ) public virtual updateMultiplier returns (bool) {
+        address owner = _msgSender();
+        uint256 amount = _getUnderlyingAmountByShares(sharesAmount, multiplier); // This method might lead to be unable to transfer all shares from account if multiplier is below 1e18
+        _transfer(owner, to, amount);
+        return true;
     }
 
     /**
@@ -274,7 +265,9 @@ contract BackedAutoFeeTokenImplementation is ERC20PermitDelegateTransferWithMult
      *
      * @param newFeePerPeriod The new fee per period value
      */
-    function updateFeePerPeriod(uint256 newFeePerPeriod) external onlyOwner {
+    function updateFeePerPeriod(
+        uint256 newFeePerPeriod
+    ) external updateMultiplier onlyOwner {
         feePerPeriod = newFeePerPeriod;
     }
 
@@ -285,9 +278,31 @@ contract BackedAutoFeeTokenImplementation is ERC20PermitDelegateTransferWithMult
      *
      * @param newMultiplierUpdater The address of the new multiplier updater
      */
-    function setMultiplierUpdater(address newMultiplierUpdater) external onlyOwner {
+    function setMultiplierUpdater(
+        address newMultiplierUpdater
+    ) external onlyOwner {
         multiplierUpdater = newMultiplierUpdater;
         emit NewMultiplierUpdater(newMultiplierUpdater);
+    }
+
+    /**
+     * @dev Function to change the time of last fee accrual. Allowed only for owner
+     *
+     * @param newLastTimeFeeApplied A timestamp of last time fee was applied
+     */
+    function setLastTimeFeeApplied(
+        uint256 newLastTimeFeeApplied
+    ) external onlyOwner {
+        lastTimeFeeApplied = newLastTimeFeeApplied;
+    }
+
+    /**
+     * @dev Function to change period length. Allowed only for owner
+     *
+     * @param newPeriodLength Length of a single accrual period in seconds
+     */
+    function setPeriodLength(uint256 newPeriodLength) external onlyOwner {
+        periodLength = newPeriodLength;
     }
 
     /**
@@ -306,29 +321,154 @@ contract BackedAutoFeeTokenImplementation is ERC20PermitDelegateTransferWithMult
             "BackedToken: Only multiplier updater"
         );
         require(
-            multiplier() == oldMultiplier,
+            multiplier == oldMultiplier,
             "BackedToken: Multiplier changed in the meantime"
         );
         _updateMultiplier(newMultiplier);
     }
 
     /**
-     * @dev Function to change the time of last fee accrual. Allowed only for owner
-     *
-     * @param newLastTimeFeeApplied A timestamp of last time fee was applied
+     * @return the amount of shares that corresponds to `_underlyingAmount` underlying amount.
      */
-    function setLastTimeFeeApplied(uint256 newLastTimeFeeApplied) external onlyOwner {
-        lastTimeFeeApplied = newLastTimeFeeApplied;
-    } 
-    
+    function _getSharesByUnderlyingAmount(
+        uint256 underlyingAmount,
+        uint256 multiplier
+    ) internal view returns (uint256) {
+        return (underlyingAmount * 1e18) / multiplier;
+    }
+
     /**
-     * @dev Function to change period length. Allowed only for owner
-     *
-     * @param newPeriodLength Length of a single accrual period in seconds
+     * @return the amount of underlying that corresponds to `_sharesAmount` token shares.
      */
-    function setPeriodLength(uint256 newPeriodLength) external onlyOwner {
-        periodLength = newPeriodLength;
-    } 
+    function _getUnderlyingAmountByShares(
+        uint256 sharesAmount,
+        uint256 multiplier
+    ) internal view returns (uint256) {
+        return (sharesAmount * multiplier) / 1e18;
+    }
+
+    /**
+     * @dev Moves `amount` of tokens from `sender` to `recipient`.
+     *
+     * This internal function is equivalent to {transfer}, and can be used to
+     * e.g. implement automatic token fees, slashing mechanisms, etc.
+     *
+     * Emits a {Transfer} event.
+     * Emits a {TransferShares} event.
+     *
+     * Requirements:
+     *
+     * - `from` cannot be the zero address.
+     * - `to` cannot be the zero address.
+     * - `from` must have a balance of at least `amount`.
+     */
+    function _transfer(
+        address from,
+        address to,
+        uint256 amount
+    ) internal virtual override {
+        require(from != address(0), "ERC20: transfer from the zero address");
+        require(to != address(0), "ERC20: transfer to the zero address");
+
+        _beforeTokenTransfer(from, to, amount);
+        uint256 _sharesAmount = _getSharesByUnderlyingAmount(
+            amount,
+            multiplier
+        );
+
+        uint256 currentSenderShares = _shares[from];
+        require(
+            currentSenderShares >= _sharesAmount,
+            "ERC20: transfer amount exceeds balance"
+        );
+
+        unchecked {
+            _shares[from] = currentSenderShares - (_sharesAmount);
+        }
+        _shares[to] = _shares[to] + (_sharesAmount);
+
+        emit Transfer(from, to, amount);
+        emit TransferShares(from, to, _sharesAmount);
+
+        _afterTokenTransfer(from, to, amount);
+    }
+
+    /** @dev Creates `amount` tokens and assigns them to `account`, increasing
+     * the total supply.
+     *
+     * Emits a {Transfer} event with `from` set to the zero address.
+     * Emits a {TransferShares} event with `from` set to the zero address.
+     *
+     * Requirements:
+     *
+     * - `account` cannot be the zero address.
+     */
+    function _mint(address account, uint256 amount) internal virtual override {
+        require(account != address(0), "ERC20: mint to the zero address");
+
+        _beforeTokenTransfer(address(0), account, amount);
+        uint256 sharesAmount = _getSharesByUnderlyingAmount(amount, multiplier);
+
+        _totalShares += sharesAmount;
+        _shares[account] += sharesAmount;
+        emit Transfer(address(0), account, amount);
+        emit TransferShares(address(0), account, sharesAmount);
+
+        _afterTokenTransfer(address(0), account, amount);
+    }
+
+    /**
+     * @dev Destroys `amount` tokens from `account`, reducing the
+     * total supply.
+     *
+     * Emits a {Transfer} event with `to` set to the zero address.
+     * Emits a {TransferShares} event with `to` set to the zero address.
+     *
+     * Requirements:
+     *
+     * - `account` cannot be the zero address.
+     * - `account` must have at least `sharesAmount` token shares.
+     */
+    function _burn(address account, uint256 amount) internal virtual override {
+        require(account != address(0), "ERC20: burn from the zero address");
+
+        _beforeTokenTransfer(account, address(0), amount);
+        uint256 sharesAmount = _getSharesByUnderlyingAmount(amount, multiplier);
+
+        uint256 accountBalance = _shares[account];
+        require(
+            accountBalance >= sharesAmount,
+            "ERC20: burn amount exceeds balance"
+        );
+        unchecked {
+            _shares[account] = accountBalance - sharesAmount;
+        }
+        _totalShares -= sharesAmount;
+
+        emit Transfer(account, address(0), amount);
+        emit TransferShares(account, address(0), sharesAmount);
+
+        _afterTokenTransfer(account, address(0), amount);
+    }
+
+    /**
+     * @dev Updates currently stored multiplier with a new value
+     *
+     * Emit an {MultiplierUpdated} event.
+     */
+    function _updateMultiplier(uint256 newMultiplier) internal virtual {
+        multiplier = newMultiplier;
+        emit MultiplierUpdated(newMultiplier);
+    }
+
+    // Implement the update multiplier functionality before transfer:
+    function _beforeTokenTransfer(
+        address from,
+        address to,
+        uint256 amount
+    ) internal virtual override updateMultiplier {
+        super._beforeTokenTransfer(from, to, amount);
+    }
 
     /**
      * @dev This empty reserved space is put in place to allow future versions to add new
