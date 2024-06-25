@@ -51,7 +51,7 @@ contract BackedTokenProxy is TransparentUpgradeableProxy {
  *
  */
 contract BackedAutoFeeTokenFactory is Ownable {
-    ProxyAdmin public proxyAdmin;
+    ProxyAdmin public immutable proxyAdmin;
     BackedAutoFeeTokenImplementation public tokenImplementation;
 
     event NewToken(address indexed newToken, string name, string symbol);
