@@ -38,7 +38,6 @@ pragma solidity 0.8.9;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "./BackedTokenImplementation.sol";
-import "./SanctionsList.sol";
 
 /**
  * @dev
@@ -111,6 +110,11 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
             _updateMultiplier(newMultiplier);
         }
         _;
+    }
+    
+    // constructor, set lastTimeFeeApplied to lock the implementation instance.
+    constructor () {
+        lastTimeFeeApplied = 1;
     }
 
     // Initializers:
@@ -263,7 +267,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         uint256 sharesAmount
     ) external virtual updateMultiplier returns (bool) {
         address owner = _msgSender();
-        uint256 amount = _getUnderlyingAmountByShares(sharesAmount, multiplier); // This method might lead to be unable to transfer all shares from account if multiplier is below 1e18
+        uint256 amount = _getUnderlyingAmountByShares(sharesAmount, multiplier);
         _transfer(owner, to, amount);
         return true;
     }
@@ -275,7 +279,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
      */
     function updateFeePerPeriod(
         uint256 newFeePerPeriod
-    ) external updateMultiplier onlyOwner {
+    ) external onlyOwner updateMultiplier {
         feePerPeriod = newFeePerPeriod;
     }
 
@@ -300,7 +304,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
      */
     function setLastTimeFeeApplied(
         uint256 newLastTimeFeeApplied
-    ) external onlyOwner {
+    ) external onlyOwner updateMultiplier {
         require(newLastTimeFeeApplied != 0, "Invalid last time fee applied");
         lastTimeFeeApplied = newLastTimeFeeApplied;
     }

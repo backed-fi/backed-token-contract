@@ -100,6 +100,26 @@ describe("BackedAutoFeeTokenImplementation", function () {
     await helpers.reset();
   })
 
+  describe('#constructor', () => {
+    it("block calling initializer on implementation contract", async function () {
+      await expect(
+        tokenImplementation['initialize(string,string)'](
+          tokenName,
+          tokenSymbol
+        )
+      ).to.be.revertedWith("Initializable: contract is already initialized");
+    });
+    it("block calling initialize_v2 on implementation contract", async function () {
+      await expect(
+        tokenImplementation.initialize_v2(
+          1,
+          1,
+          0
+        )
+      ).to.be.revertedWith("BackedAutoFeeTokenImplementation already initialized");
+    });
+  });
+
   describe('#initializer_v2', () => {
     it("Cannot initialize twice", async function () {
       await expect(
