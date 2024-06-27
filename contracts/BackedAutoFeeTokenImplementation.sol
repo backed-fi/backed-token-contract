@@ -1,7 +1,7 @@
 /**
  * SPDX-License-Identifier: MIT
  *
- * Copyright (c) 2021-2022 Backed Finance AG
+ * Copyright (c) 2021-2024 Backed Finance AG
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -47,7 +47,7 @@ import "./BackedTokenImplementation.sol";
  * with logic of multiplier, which is used for rebasing logic of the token, thus becoming rebase token itself. Additionally, it contains
  * mechanism, which changes this multiplier per configured fee periodically, on defined period length.
  * It contains one additional role:
- *  - A multiplierUpdated, that can update value of a multiplier.
+ *  - A multiplierUpdater, that can update value of a multiplier.
  *
  */
 
