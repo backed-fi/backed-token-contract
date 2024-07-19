@@ -97,7 +97,7 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
         initialize("Backed Token Implementation", "BTI");
     }
 
-    function initialize(string memory name_, string memory symbol_) public initializer {
+    function initialize(string memory name_, string memory symbol_) public virtual initializer {
         __ERC20_init(name_, symbol_);
         __Ownable_init();
         _buildDomainSeparator();
@@ -149,7 +149,7 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) public override allowedDelegate {
+    ) public virtual override allowedDelegate {
         super.delegatedTransfer(owner, to, value, deadline, v, r, s);
     }
 
@@ -172,7 +172,7 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
      * @param account   The account from which the tokens will be burned
      * @param amount    The amount of tokens to be burned
      */
-    function burn(address account, uint256 amount) external {
+    function burn(address account, uint256 amount) virtual external {
         require(_msgSender() == burner, "BackedToken: Only burner");
         require(account == _msgSender() || account == address(this), "BackedToken: Cannot burn account");
         _burn(account, amount);
