@@ -1,7 +1,7 @@
 /**
  * SPDX-License-Identifier: MIT
  *
- * Copyright (c) 2021-2022 Backed Finance AG
+ * Copyright (c) 2021-2024 Backed Finance AG
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -38,7 +38,6 @@ pragma solidity 0.8.9;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "./BackedTokenImplementation.sol";
-import "./SanctionsList.sol";
 
 /**
  * @dev
@@ -48,7 +47,7 @@ import "./SanctionsList.sol";
  * with logic of multiplier, which is used for rebasing logic of the token, thus becoming rebase token itself. Additionally, it contains
  * mechanism, which changes this multiplier per configured fee periodically, on defined period length.
  * It contains one additional role:
- *  - A multiplierUpdated, that can update value of a multiplier.
+ *  - A multiplierUpdater, that can update value of a multiplier.
  *
  */
 
@@ -112,6 +111,11 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         }
         _;
     }
+    
+    // constructor, set lastTimeFeeApplied to lock the implementation instance.
+    constructor () {
+        lastTimeFeeApplied = 1;
+    }
 
     // Initializers:
     function initialize(
@@ -128,7 +132,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         uint256 _periodLength,
         uint256 _lastTimeFeeApplied,
         uint256 _feePerPeriod
-    ) public virtual {
+    ) external virtual {
         super.initialize(name_, symbol_);
         _initialize_auto_fee(_periodLength, _lastTimeFeeApplied, _feePerPeriod);
     }
@@ -138,7 +142,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         uint256 _periodLength,
         uint256 _lastTimeFeeApplied,
         uint256 _feePerPeriod
-    ) public virtual {
+    ) external virtual {
         _initialize_auto_fee(_periodLength, _lastTimeFeeApplied, _feePerPeriod);
     }
 
@@ -146,8 +150,9 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         uint256 _periodLength,
         uint256 _lastTimeFeeApplied,
         uint256 _feePerPeriod
-    ) public virtual {
+    ) internal virtual {
         require(lastTimeFeeApplied == 0, "BackedAutoFeeTokenImplementation already initialized");
+        require(_lastTimeFeeApplied != 0, "Invalid last time fee applied");
 
         multiplier = 1e18;
         periodLength = _periodLength;
@@ -160,7 +165,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
      */
     function totalSupply() public view virtual override returns (uint256) {
         (uint256 newMultiplier, ) = getCurrentMultiplier();
-        return (_totalShares * newMultiplier) / 1e18;
+        return _getUnderlyingAmountByShares(_totalShares, newMultiplier);
     }
 
     /**
@@ -170,7 +175,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         address account
     ) public view virtual override returns (uint256) {
         (uint256 newMultiplier, ) = getCurrentMultiplier();
-        return (sharesOf(account) * newMultiplier) / 1e18;
+        return _getUnderlyingAmountByShares(sharesOf(account), newMultiplier);
     }
 
     /**
@@ -204,7 +209,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
      */
     function getSharesByUnderlyingAmount(
         uint256 _underlyingAmount
-    ) public view returns (uint256) {
+    ) external view returns (uint256) {
         (uint256 newMultiplier, ) = getCurrentMultiplier();
         return _getSharesByUnderlyingAmount(_underlyingAmount, newMultiplier);
     }
@@ -214,7 +219,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
      */
     function getUnderlyingAmountByShares(
         uint256 _sharesAmount
-    ) public view returns (uint256) {
+    ) external view returns (uint256) {
         (uint256 newMultiplier, ) = getCurrentMultiplier();
         return _getUnderlyingAmountByShares(_sharesAmount, newMultiplier);
     }
@@ -230,7 +235,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) public virtual allowedDelegate {
+    ) external virtual allowedDelegate updateMultiplier {
         require(block.timestamp <= deadline, "ERC20Permit: expired deadline");
 
         bytes32 structHash = keccak256(
@@ -260,9 +265,9 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     function transferShares(
         address to,
         uint256 sharesAmount
-    ) public virtual updateMultiplier returns (bool) {
+    ) external virtual updateMultiplier returns (bool) {
         address owner = _msgSender();
-        uint256 amount = _getUnderlyingAmountByShares(sharesAmount, multiplier); // This method might lead to be unable to transfer all shares from account if multiplier is below 1e18
+        uint256 amount = _getUnderlyingAmountByShares(sharesAmount, multiplier);
         _transfer(owner, to, amount);
         return true;
     }
@@ -274,7 +279,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
      */
     function updateFeePerPeriod(
         uint256 newFeePerPeriod
-    ) external updateMultiplier onlyOwner {
+    ) external onlyOwner updateMultiplier {
         feePerPeriod = newFeePerPeriod;
     }
 
@@ -299,7 +304,8 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
      */
     function setLastTimeFeeApplied(
         uint256 newLastTimeFeeApplied
-    ) external onlyOwner {
+    ) external onlyOwner updateMultiplier {
+        require(newLastTimeFeeApplied != 0, "Invalid last time fee applied");
         lastTimeFeeApplied = newLastTimeFeeApplied;
     }
 
@@ -308,7 +314,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
      *
      * @param newPeriodLength Length of a single accrual period in seconds
      */
-    function setPeriodLength(uint256 newPeriodLength) external onlyOwner {
+    function setPeriodLength(uint256 newPeriodLength) external onlyOwner updateMultiplier {
         periodLength = newPeriodLength;
     }
 
@@ -338,20 +344,20 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
      * @return the amount of shares that corresponds to `_underlyingAmount` underlying amount.
      */
     function _getSharesByUnderlyingAmount(
-        uint256 underlyingAmount,
-        uint256 multiplier
-    ) internal view returns (uint256) {
-        return (underlyingAmount * 1e18) / multiplier;
+        uint256 _underlyingAmount,
+        uint256 _multiplier
+    ) internal pure returns (uint256) {
+        return (_underlyingAmount * 1e18) / _multiplier;
     }
 
     /**
      * @return the amount of underlying that corresponds to `_sharesAmount` token shares.
      */
     function _getUnderlyingAmountByShares(
-        uint256 sharesAmount,
-        uint256 multiplier
-    ) internal view returns (uint256) {
-        return (sharesAmount * multiplier) / 1e18;
+        uint256 _sharesAmount,
+        uint256 _multiplier
+    ) internal pure returns (uint256) {
+        return (_sharesAmount * _multiplier) / 1e18;
     }
 
     /**
@@ -476,11 +482,4 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     ) internal virtual override updateMultiplier {
         super._beforeTokenTransfer(from, to, amount);
     }
-
-    /**
-     * @dev This empty reserved space is put in place to allow future versions to add new
-     * variables without shifting down storage in the inheritance chain.
-     * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
-     */
-    uint256[49] private __gap;
 }

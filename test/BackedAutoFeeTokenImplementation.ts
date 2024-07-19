@@ -100,6 +100,26 @@ describe("BackedAutoFeeTokenImplementation", function () {
     await helpers.reset();
   })
 
+  describe('#constructor', () => {
+    it("block calling initializer on implementation contract", async function () {
+      await expect(
+        tokenImplementation['initialize(string,string)'](
+          tokenName,
+          tokenSymbol
+        )
+      ).to.be.revertedWith("Initializable: contract is already initialized");
+    });
+    it("block calling initialize_v2 on implementation contract", async function () {
+      await expect(
+        tokenImplementation.initialize_v2(
+          1,
+          1,
+          0
+        )
+      ).to.be.revertedWith("BackedAutoFeeTokenImplementation already initialized");
+    });
+  });
+
   describe('#initializer_v2', () => {
     it("Cannot initialize twice", async function () {
       await expect(
@@ -123,6 +143,22 @@ describe("BackedAutoFeeTokenImplementation", function () {
           ]
         ));
         token = BackedAutoFeeTokenImplementation__factory.connect(tokenProxy.address, owner.signer);
+      });
+      it("Cannot initialize with last time fee applied set to zero ", async function () {
+        await expect(
+          proxyAdmin.upgradeAndCall(
+            token.address,
+            tokenImplementation.address,
+            tokenImplementation.interface.encodeFunctionData(
+              'initialize_v2',
+              [
+                24 * 3600,
+                0,
+                baseFeePerPeriod
+              ]
+            )
+          )
+        ).to.be.revertedWith("Invalid last time fee applied");
       });
 
       it('Should be able to upgrade with initialize_v2 method', async () => {
@@ -197,6 +233,12 @@ describe("BackedAutoFeeTokenImplementation", function () {
       const subject = () => token.connect(actor.signer).setLastTimeFeeApplied(1)
       it('should revert transaction', async () => {
         await expect(subject()).to.be.reverted
+      })
+    })
+    describe('When trying to set value to zero', () => {
+      const subject = () => token.setLastTimeFeeApplied(0)
+      it('should revert transaction', async () => {
+        await expect(subject()).to.be.revertedWith("Invalid last time fee applied")
       })
     })
     describe('When called by owner', () => {
@@ -465,6 +507,18 @@ describe("BackedAutoFeeTokenImplementation", function () {
           await helpers.mine()
           await expect(subject()).to.be.reverted;
         })
+
+        describe('when time moved by 365 days forward', () => {
+          const periodsPassed = 365;
+          cacheBeforeEach(async () => {
+            await helpers.time.setNextBlockTimestamp(baseTime + periodsPassed * accrualPeriodLength);
+            await helpers.mine()
+          })
+          it('Should move requested shares of tokens', async () => {
+            await subject();
+            expect((await token.sharesOf(actor.address))).to.be.eq(sharesToTransfer);
+          })
+        });
       })
       describe('And caller is whitelisted delegate', () => {
 
