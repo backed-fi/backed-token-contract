@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 import { ProxyAdmin__factory } from '../typechain/factories/ProxyAdmin__factory';
 import { ProxyAdmin } from '../typechain/ProxyAdmin';
 import { BackedAutoFeeTokenImplementation__factory } from '../typechain/factories/BackedAutoFeeTokenImplementation__factory';
@@ -184,15 +185,19 @@ describe("BackedAutoFeeTokenImplementation", function () {
     describe('when time moved by 365 days forward', () => {
       const periodsPassed = 365;
       let preMultiplier: BigNumber;
+      let preMultiplierNonce: BigNumber;
       describe('and fee is set to non-zero value', () => {
         cacheBeforeEach(async () => {
           preMultiplier = await token.multiplier();
+          preMultiplierNonce = await token.multiplierNonce();
           await helpers.time.setNextBlockTimestamp(baseTime + periodsPassed * accrualPeriodLength);
           await helpers.mine()
         })
 
         it('should change current multiplier', async () => {
-          expect((await token.getCurrentMultiplier()).newMultiplier).to.be.not.equal(preMultiplier)
+          const currentMultiplier = await token.getCurrentMultiplier();
+          expect(currentMultiplier.newMultiplier).to.be.not.equal(preMultiplier)
+          expect(currentMultiplier.newMultiplierNonce).to.be.not.equal(preMultiplierNonce)
         })
         it('should not update stored multiplier', async () => {
           expect(await token.multiplier()).to.be.equal(preMultiplier)
@@ -202,12 +207,17 @@ describe("BackedAutoFeeTokenImplementation", function () {
         cacheBeforeEach(async () => {
           await token.updateFeePerPeriod('0');
           preMultiplier = await token.multiplier();
+          preMultiplierNonce = await token.multiplierNonce();
           await helpers.time.setNextBlockTimestamp(baseTime + periodsPassed * accrualPeriodLength);
           await helpers.mine()
         })
 
         it('should not change current multiplier', async () => {
           expect((await token.getCurrentMultiplier()).newMultiplier).to.be.equal(preMultiplier)
+        })
+
+        it('should change current multiplier nonce', async () => {
+          expect((await token.getCurrentMultiplier()).newMultiplierNonce).to.be.equal(preMultiplierNonce)
         })
       })
     })
@@ -341,11 +351,12 @@ describe("BackedAutoFeeTokenImplementation", function () {
       })
 
       describe('#updateMultiplierValue', () => {
-        it('Should update stored multiplier value', async () => {
-          const { newMultiplier: currentMultiplier } = await token.getCurrentMultiplier();
+        it('Should update stored multiplier value and nonce', async () => {
+          const { newMultiplier: currentMultiplier, newMultiplierNonce: currentMultiplierNonce } = await token.getCurrentMultiplier();
           const newMultiplierValue = currentMultiplier.div(2);
           await token.updateMultiplierValue(newMultiplierValue, currentMultiplier)
           expect(await token.multiplier()).to.be.equal(newMultiplierValue);
+          expect(await token.multiplierNonce()).to.be.equal(currentMultiplierNonce.add(1));
           expect(await token.lastTimeFeeApplied()).to.be.equal(baseTime + periodsPassed * accrualPeriodLength);
         });
         it('Should reject update, if wrong past value was passed', async () => {
@@ -354,6 +365,29 @@ describe("BackedAutoFeeTokenImplementation", function () {
         it('Should reject update, if wrong account is used', async () => {
           const { newMultiplier: currentMultiplier } = await token.getCurrentMultiplier();
           await expect(token.connect(actor.signer).updateMultiplierValue(1, currentMultiplier)).to.be.reverted
+        });
+      });
+
+      describe('#updateMultiplierWithNonce', () => {
+        it('Should update stored multiplier value and nonce', async () => {
+          const { newMultiplier: currentMultiplier, newMultiplierNonce: currentMultiplierNonce } = await token.getCurrentMultiplier();
+          const newMultiplierValue = currentMultiplier.div(2);
+          const newMultiplierNonce = currentMultiplierNonce.add(100);
+          await token.updateMultiplierWithNonce(newMultiplierValue, currentMultiplier, newMultiplierNonce)
+          expect(await token.multiplier()).to.be.equal(newMultiplierValue);
+          expect(await token.multiplierNonce()).to.be.equal(newMultiplierNonce);
+          expect(await token.lastTimeFeeApplied()).to.be.equal(baseTime + periodsPassed * accrualPeriodLength);
+        });
+        it('Should reject update, if wrong past value was passed', async () => {
+          await expect(token.updateMultiplierWithNonce(0, 1, 1)).to.be.reverted;
+        });
+        it('Should reject update, if wrong account is used', async () => {
+          const { newMultiplier: currentMultiplier, newMultiplierNonce: currentMultiplierNonce } = await token.getCurrentMultiplier();
+          await expect(token.connect(actor.signer).updateMultiplierWithNonce(1, currentMultiplier, currentMultiplierNonce.add(1))).to.be.reverted
+        });
+        it('Should reject update, if wrong nonce is used', async () => {
+          const { newMultiplier: currentMultiplier, newMultiplierNonce: currentMultiplierNonce } = await token.getCurrentMultiplier();
+          await expect(token.connect(actor.signer).updateMultiplierValue(1, currentMultiplier, currentMultiplierNonce)).to.be.reverted
         });
       });
 
