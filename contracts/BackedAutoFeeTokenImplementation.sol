@@ -77,6 +77,8 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
 
     uint256 internal _totalShares;
 
+    uint256 public multiplierNonce;
+
     // Events:
 
     /**
@@ -104,11 +106,35 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     // Modifiers:
 
     modifier updateMultiplier() {
-        (uint256 newMultiplier, uint256 periodsPassed) = getCurrentMultiplier();
+        (uint256 newMultiplier, uint256 periodsPassed, uint256 newMultiplierNonce) = getCurrentMultiplier();
         lastTimeFeeApplied = lastTimeFeeApplied + periodLength * periodsPassed;
         if (multiplier != newMultiplier) {
-            _updateMultiplier(newMultiplier);
+            _updateMultiplier(newMultiplier, newMultiplierNonce);
         }
+        _;
+    }
+
+    modifier onlyMultiplierUpdater() {
+        require(
+            _msgSender() == multiplierUpdater,
+            "BackedToken: Only multiplier updater"
+        );
+        _;
+    }
+
+    modifier onlyUpdatedMultiplier(uint256 oldMultiplier) {
+        require(
+            multiplier == oldMultiplier,
+            "BackedToken: Multiplier changed in the meantime"
+        );
+        _;
+    }
+
+    modifier onlyNewerMultiplierNonce(uint256 newMultiplierNonce) {
+        require(
+            multiplierNonce < newMultiplierNonce,
+            "BackedToken: Multiplier nonce is outdated."
+        );
         _;
     }
     
@@ -155,6 +181,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         require(_lastTimeFeeApplied != 0, "Invalid last time fee applied");
 
         multiplier = 1e18;
+        multiplierNonce = 0;
         periodLength = _periodLength;
         lastTimeFeeApplied = _lastTimeFeeApplied;
         feePerPeriod = _feePerPeriod;
@@ -164,7 +191,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
      * @dev See {IERC20-totalSupply}.
      */
     function totalSupply() public view virtual override returns (uint256) {
-        (uint256 newMultiplier, ) = getCurrentMultiplier();
+        (uint256 newMultiplier, ,) = getCurrentMultiplier();
         return _getUnderlyingAmountByShares(_totalShares, newMultiplier);
     }
 
@@ -174,7 +201,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     function balanceOf(
         address account
     ) public view virtual override returns (uint256) {
-        (uint256 newMultiplier, ) = getCurrentMultiplier();
+        (uint256 newMultiplier, ,) = getCurrentMultiplier();
         return _getUnderlyingAmountByShares(sharesOf(account), newMultiplier);
     }
 
@@ -186,14 +213,16 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         public
         view
         virtual
-        returns (uint256 newMultiplier, uint256 periodsPassed)
+        returns (uint256 newMultiplier, uint256 periodsPassed, uint256 newMultiplierNonce)
     {
         periodsPassed = (block.timestamp - lastTimeFeeApplied) / periodLength;
         newMultiplier = multiplier;
+        newMultiplierNonce = multiplierNonce;
         if (feePerPeriod > 0) {
             for (uint256 index = 0; index < periodsPassed; index++) {
                 newMultiplier = (newMultiplier * (1e18 - feePerPeriod)) / 1e18;
             }
+            newMultiplierNonce += periodsPassed;
         }
     }
 
@@ -210,7 +239,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     function getSharesByUnderlyingAmount(
         uint256 _underlyingAmount
     ) external view returns (uint256) {
-        (uint256 newMultiplier, ) = getCurrentMultiplier();
+        (uint256 newMultiplier, ,) = getCurrentMultiplier();
         return _getSharesByUnderlyingAmount(_underlyingAmount, newMultiplier);
     }
 
@@ -220,7 +249,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     function getUnderlyingAmountByShares(
         uint256 _sharesAmount
     ) external view returns (uint256) {
-        (uint256 newMultiplier, ) = getCurrentMultiplier();
+        (uint256 newMultiplier, ,) = getCurrentMultiplier();
         return _getUnderlyingAmountByShares(_sharesAmount, newMultiplier);
     }
 
@@ -319,7 +348,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     }
 
     /**
-     * @dev Function to change the contract multiplier, only if oldMultiplier did not change in the meantime. Allowed only for owner
+     * @dev Function to change the contract multiplier, only if oldMultiplier did not change in the meantime. Allowed only for multiplierUpdater
      *
      * Emits a { MultiplierChanged } event
      *
@@ -328,16 +357,24 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     function updateMultiplierValue(
         uint256 newMultiplier,
         uint256 oldMultiplier
-    ) external updateMultiplier {
-        require(
-            _msgSender() == multiplierUpdater,
-            "BackedToken: Only multiplier updater"
-        );
-        require(
-            multiplier == oldMultiplier,
-            "BackedToken: Multiplier changed in the meantime"
-        );
-        _updateMultiplier(newMultiplier);
+    ) public onlyMultiplierUpdater updateMultiplier onlyUpdatedMultiplier(oldMultiplier) {
+        _updateMultiplier(newMultiplier, multiplierNonce + 1);
+    }
+
+    /**
+     * @dev Function to change the contract multiplier with nonce, only if oldMultiplier did not change in the meantime. Allowed only for multiplierUpdater
+     *
+     * Emits a { MultiplierChanged } event
+     *
+     * @param newMultiplier New multiplier value
+     * @param newMultiplierNonce New multplier nonce
+     */
+    function updateMultiplierWithNonce(
+        uint256 newMultiplier,
+        uint256 oldMultiplier,
+        uint256 newMultiplierNonce
+    ) external onlyMultiplierUpdater updateMultiplier onlyUpdatedMultiplier(oldMultiplier) onlyNewerMultiplierNonce(newMultiplierNonce){
+        _updateMultiplier(newMultiplier, newMultiplierNonce);
     }
 
     /**
@@ -469,8 +506,9 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
      *
      * Emit an {MultiplierUpdated} event.
      */
-    function _updateMultiplier(uint256 newMultiplier) internal virtual {
+    function _updateMultiplier(uint256 newMultiplier, uint256 newMultiplierNonce) internal virtual {
         multiplier = newMultiplier;
+        multiplierNonce = newMultiplierNonce;
         emit MultiplierUpdated(newMultiplier);
     }
 
