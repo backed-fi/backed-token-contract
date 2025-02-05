@@ -29,8 +29,7 @@ type SignerWithAddress = {
 };
 
 // WrappedBackedTokenImplementation specifications
-describe.only("WrappedBackedTokenImplementation", function () {
-  const accrualPeriodLength = 24 * 3600;
+describe("WrappedBackedTokenImplementation", function () {
   const annualFee = 0.5;
   const multiplierAdjustmentPerPeriod = nthRoot(annualFee, 365).mul(Decimal.pow(10, 18));
   const baseFeePerPeriod = Decimal.pow(10, 18).minus(multiplierAdjustmentPerPeriod).toFixed(0);
