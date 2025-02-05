@@ -247,8 +247,12 @@ contract WrappedBackedTokenImplementation is OwnableUpgradeable, ERC4626Upgradea
         // Check not paused:
         require(!isPaused, "WrappedBackedToken: token transfer while paused");
 
-        require(!sanctionsList.isSanctioned(from), "WrappedBackedToken: sender is sanctioned");
-        require(!sanctionsList.isSanctioned(to), "WrappedBackedToken: receiver is sanctioned");
+        if (from != address(0)) {
+            require(!sanctionsList.isSanctioned(from), "WrappedBackedToken: sender is sanctioned");
+        }
+        if (to != address(0)) {
+            require(!sanctionsList.isSanctioned(to), "WrappedBackedToken: receiver is sanctioned");
+        }
 
         super._beforeTokenTransfer(from, to, amount);
     }

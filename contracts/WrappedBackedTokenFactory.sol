@@ -50,7 +50,7 @@ contract WrappedBackedTokenProxy is TransparentUpgradeableProxy {
  *  - An owner, which can deploy new tokens
  *
  */
-contract BackedAutoFeeTokenFactory is Ownable {
+contract WrappedBackedTokenFactory is Ownable {
     ProxyAdmin public immutable proxyAdmin;
     WrappedBackedTokenImplementation public wrappedTokenImplementation;
 
