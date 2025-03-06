@@ -96,9 +96,6 @@ contract BackedWrappedOracleForwarder is
         return _upstreamOracle.description();
     }
 
-    /**
-     * @notice Get the price of 1 share of the wrapped token, using *current* ratio.
-     */
     function latestAnswer() external view override returns (int256) {
         return _calcWrappedPrice(_upstreamOracle.latestAnswer());
     }
