@@ -67,23 +67,23 @@ contract BackedWrappedOracleForwarderFactory is Ownable {
     constructor(address admin, address[] memory timelockWorkers) {
         require(admin != address(0), "Factory: admin cannot be 0");
 
-        // 1) Deploy the reference implementation.
+        // Deploy the reference implementation.
         implementation = new BackedWrappedOracleForwarder();
 
-        // 2) Deploy a ProxyAdmin
+        // Deploy a ProxyAdmin
         proxyAdmin = new ProxyAdmin();
 
-        // 3) Deploy a TimelockController (7-day delay as an example).
+        // Deploy a TimelockController (7-day delay as an example).
         timelockController = new TimelockController(
             7 days,
             timelockWorkers,
             timelockWorkers
         );
 
-        // 4) Transfer ProxyAdmin ownership to Timelock, so upgrades are timelocked.
+        // Transfer ProxyAdmin ownership to Timelock, so upgrades are timelocked.
         proxyAdmin.transferOwnership(address(timelockController));
 
-        // 5) Grant the admin address the TIMELOCK_ADMIN_ROLE on the timelock.
+        // Grant the admin address the TIMELOCK_ADMIN_ROLE on the timelock.
         timelockController.grantRole(
             timelockController.TIMELOCK_ADMIN_ROLE(),
             admin
@@ -109,7 +109,7 @@ contract BackedWrappedOracleForwarderFactory is Ownable {
         // description cause a “Salt already used” error unless you change something.
         bytes32 salt = keccak256(abi.encodePacked(description));
 
-        // 1) Deploy a new TransparentUpgradeableProxy using our reference `implementation`.
+        // Deploy a new TransparentUpgradeableProxy using our reference `implementation`.
         BackedWrappedOracleForwarderProxy proxy = new BackedWrappedOracleForwarderProxy{
             salt: salt
         }(
@@ -123,7 +123,7 @@ contract BackedWrappedOracleForwarderFactory is Ownable {
             )
         );
 
-        // 2) Emit event for discovery.
+        // Emit event for discovery.
         emit NewWrappedOracleForwarder(address(proxy));
         return address(proxy);
     }

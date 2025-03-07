@@ -30,22 +30,8 @@ import "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 import "@openzeppelin/contracts-upgradeable-new/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable-new/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable-new/access/OwnableUpgradeable.sol";
-
 import "./BackedOracleInterface.sol";
 
-/**
- * @title BackedWrappedOracleForwarder
- * @notice This contract:
- *         1) Pulls the price of the underlying asset from an upstream oracle.
- *         2) Fetches the assets-per-share ratio from a WrappedBackedToken (ERC4626).
- *         3) Returns the price of 1 share of the WrappedBackedToken, in the same
- *            "currency" (and decimal format) as the upstream oracle feed.
- *
- *         It implements the AggregatorV2V3Interface so that clients reading from
- *         a chainlink-style price feed can treat it like any normal aggregator.
- *
- *         This is an upgradeable contract using Transparent Upgradeable Proxy.
- */
 contract BackedWrappedOracleForwarder is
     Initializable,
     OwnableUpgradeable,
