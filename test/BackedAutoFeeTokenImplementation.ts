@@ -1,8 +1,10 @@
 /* eslint-disable prettier/prettier */
-import { ProxyAdmin__factory } from '../typechain/factories/ProxyAdmin__factory';
-import { ProxyAdmin } from '../typechain/ProxyAdmin';
-import { BackedAutoFeeTokenImplementation__factory } from '../typechain/factories/BackedAutoFeeTokenImplementation__factory';
-import { BackedAutoFeeTokenImplementation } from '../typechain/BackedAutoFeeTokenImplementation';
+import { ProxyAdmin__factory } from "../typechain/factories/ProxyAdmin__factory";
+import { ProxyAdmin } from "../typechain/ProxyAdmin";
+import {
+  BackedAutoFeeTokenImplementation__factory
+} from "../typechain/factories/BackedAutoFeeTokenImplementation__factory";
+import { BackedAutoFeeTokenImplementation } from "../typechain/BackedAutoFeeTokenImplementation";
 import * as helpers from "@nomicfoundation/hardhat-network-helpers";
 
 import { expect } from "chai";
@@ -10,14 +12,12 @@ import { ethers } from "hardhat";
 import { BigNumber, Signer } from "ethers";
 import {
   BackedTokenImplementation__factory,
-  BackedTokenProxy,
   BackedTokenProxy__factory,
   SanctionsListMock,
-  SanctionsListMock__factory,
-  // eslint-disable-next-line node/no-missing-import
+  SanctionsListMock__factory
 } from "../typechain";
 import { cacheBeforeEach } from "./helpers";
-import Decimal from 'decimal.js';
+import Decimal from "decimal.js";
 
 type SignerWithAddress = {
   signer: Signer;
@@ -196,8 +196,8 @@ describe("BackedAutoFeeTokenImplementation", function () {
 
         it('should change current multiplier', async () => {
           const currentMultiplier = await token.getCurrentMultiplier();
-          expect(currentMultiplier.newMultiplier).to.be.not.equal(preMultiplier)
-          expect(currentMultiplier.newMultiplierNonce).to.be.not.equal(preMultiplierNonce)
+          expect(currentMultiplier.currentMultiplier).to.be.not.equal(preMultiplier)
+          expect(currentMultiplier.currentMultiplierNonce).to.be.not.equal(preMultiplierNonce)
         })
         it('should not update stored multiplier', async () => {
           expect(await token.multiplier()).to.be.equal(preMultiplier)
@@ -213,11 +213,11 @@ describe("BackedAutoFeeTokenImplementation", function () {
         })
 
         it('should not change current multiplier', async () => {
-          expect((await token.getCurrentMultiplier()).newMultiplier).to.be.equal(preMultiplier)
+          expect((await token.getCurrentMultiplier()).currentMultiplier).to.be.equal(preMultiplier)
         })
 
         it('should change current multiplier nonce', async () => {
-          expect((await token.getCurrentMultiplier()).newMultiplierNonce).to.be.equal(preMultiplierNonce)
+          expect((await token.getCurrentMultiplier()).currentMultiplierNonce).to.be.equal(preMultiplierNonce)
         })
       })
     })
@@ -352,42 +352,42 @@ describe("BackedAutoFeeTokenImplementation", function () {
 
       describe('#updateMultiplierValue', () => {
         it('Should update stored multiplier value and nonce', async () => {
-          const { newMultiplier: currentMultiplier, newMultiplierNonce: currentMultiplierNonce } = await token.getCurrentMultiplier();
+          const { currentMultiplier, currentMultiplierNonce } = await token.getCurrentMultiplier();
           const newMultiplierValue = currentMultiplier.div(2);
-          await token.updateMultiplierValue(newMultiplierValue, currentMultiplier)
+          await token.updateMultiplierValue(newMultiplierValue, currentMultiplier, 0)
           expect(await token.multiplier()).to.be.equal(newMultiplierValue);
           expect(await token.multiplierNonce()).to.be.equal(currentMultiplierNonce.add(1));
           expect(await token.lastTimeFeeApplied()).to.be.equal(baseTime + periodsPassed * accrualPeriodLength);
         });
         it('Should reject update, if wrong past value was passed', async () => {
-          await expect(token.updateMultiplierValue(0, 1)).to.be.reverted;
+          await expect(token.updateMultiplierValue(0, 1, 0)).to.be.reverted;
         });
         it('Should reject update, if wrong account is used', async () => {
-          const { newMultiplier: currentMultiplier } = await token.getCurrentMultiplier();
-          await expect(token.connect(actor.signer).updateMultiplierValue(1, currentMultiplier)).to.be.reverted
+          const { currentMultiplier } = await token.getCurrentMultiplier();
+          await expect(token.connect(actor.signer).updateMultiplierValue(1, currentMultiplier, 0)).to.be.reverted
         });
       });
 
       describe('#updateMultiplierWithNonce', () => {
         it('Should update stored multiplier value and nonce', async () => {
-          const { newMultiplier: currentMultiplier, newMultiplierNonce: currentMultiplierNonce } = await token.getCurrentMultiplier();
+          const { currentMultiplier, currentMultiplierNonce } = await token.getCurrentMultiplier();
           const newMultiplierValue = currentMultiplier.div(2);
           const newMultiplierNonce = currentMultiplierNonce.add(100);
-          await token.updateMultiplierWithNonce(newMultiplierValue, currentMultiplier, newMultiplierNonce)
+          await token.updateMultiplierWithNonce(newMultiplierValue, currentMultiplier, newMultiplierNonce, 0)
           expect(await token.multiplier()).to.be.equal(newMultiplierValue);
           expect(await token.multiplierNonce()).to.be.equal(newMultiplierNonce);
           expect(await token.lastTimeFeeApplied()).to.be.equal(baseTime + periodsPassed * accrualPeriodLength);
         });
         it('Should reject update, if wrong past value was passed', async () => {
-          await expect(token.updateMultiplierWithNonce(0, 1, 1)).to.be.reverted;
+          await expect(token.updateMultiplierWithNonce(0, 1, 1, 0)).to.be.reverted;
         });
         it('Should reject update, if wrong account is used', async () => {
-          const { newMultiplier: currentMultiplier, newMultiplierNonce: currentMultiplierNonce } = await token.getCurrentMultiplier();
-          await expect(token.connect(actor.signer).updateMultiplierWithNonce(1, currentMultiplier, currentMultiplierNonce.add(1))).to.be.reverted
+          const { currentMultiplier, currentMultiplierNonce } = await token.getCurrentMultiplier();
+          await expect(token.connect(actor.signer).updateMultiplierWithNonce(1, currentMultiplier, currentMultiplierNonce.add(1), 0)).to.be.reverted
         });
         it('Should reject update, if wrong nonce is used', async () => {
-          const { newMultiplier: currentMultiplier, newMultiplierNonce: currentMultiplierNonce } = await token.getCurrentMultiplier();
-          await expect(token.connect(actor.signer).updateMultiplierValue(1, currentMultiplier, currentMultiplierNonce)).to.be.reverted
+          const { currentMultiplier, currentMultiplierNonce } = await token.getCurrentMultiplier();
+          await expect(token.connect(actor.signer).updateMultiplierValue(1, currentMultiplier, currentMultiplierNonce, 0)).to.be.reverted
         });
       });
 
@@ -436,7 +436,7 @@ describe("BackedAutoFeeTokenImplementation", function () {
           expect((await token.balanceOf(actor.address)).sub(newlyMintedTokens).abs()).to.be.lte(1);
         })
         it('Should mint number of shares according to multiplier', async () => {
-          expect(await token.sharesOf(actor.address)).to.be.eq(newlyMintedTokens.mul(ethers.BigNumber.from(10).pow(18)).div((await token.getCurrentMultiplier()).newMultiplier));
+          expect(await token.sharesOf(actor.address)).to.be.eq(newlyMintedTokens.mul(ethers.BigNumber.from(10).pow(18)).div((await token.getCurrentMultiplier()).currentMultiplier));
         })
       });
     })
