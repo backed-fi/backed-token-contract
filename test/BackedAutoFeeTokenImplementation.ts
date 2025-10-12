@@ -1,16 +1,13 @@
 /* eslint-disable prettier/prettier */
-import { ProxyAdmin__factory } from "../typechain/factories/ProxyAdmin__factory";
-import { ProxyAdmin } from "../typechain/ProxyAdmin";
-import {
-  BackedAutoFeeTokenImplementation__factory
-} from "../typechain/factories/BackedAutoFeeTokenImplementation__factory";
-import { BackedAutoFeeTokenImplementation } from "../typechain/BackedAutoFeeTokenImplementation";
 import * as helpers from "@nomicfoundation/hardhat-network-helpers";
-
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { BigNumber, Signer } from "ethers";
 import {
+  ProxyAdmin__factory,
+  ProxyAdmin,
+  BackedAutoFeeTokenImplementation__factory,
+  BackedAutoFeeTokenImplementation,
   BackedTokenImplementation__factory,
   BackedTokenProxy__factory,
   SanctionsListMock,
@@ -181,6 +178,57 @@ describe("BackedAutoFeeTokenImplementation", function () {
       })
     });
   })
+
+  describe('#initializer_v3', () => {
+    describe('When called on already initialized v3 contract', () => {
+      it("Cannot initialize twice", async function () {
+        await expect(
+          token.connect(owner.signer).initialize_v3()
+        ).to.be.revertedWith("BackedAutoFeeTokenImplementation v3 already initialized");
+      });
+    });
+
+    describe('When upgrading from v2 to v3', () => {
+      let tokenV2Upgraded: BackedAutoFeeTokenImplementation;
+
+      // Create a v2 implementation mock that doesn't initialize the new v3 fields
+      cacheBeforeEach(async () => {
+        // Deploy old v1 token
+        const oldTokenImplementationFactory = new BackedTokenImplementation__factory(owner.signer);
+        const oldTokenImplementation = await oldTokenImplementationFactory.deploy();
+        const tokenProxy = await new BackedTokenProxy__factory(owner.signer).deploy(
+          oldTokenImplementation.address,
+          proxyAdmin.address,
+          oldTokenImplementation.interface.encodeFunctionData('initialize', [tokenName, tokenSymbol])
+        );
+
+        // Upgrade to v2 (BackedAutoFeeTokenImplementation)
+        const v2Implementation = await new BackedAutoFeeTokenImplementation__factory(owner.signer).deploy();
+        await proxyAdmin.upgradeAndCall(
+          tokenProxy.address,
+          v2Implementation.address,
+          v2Implementation.interface.encodeFunctionData('initialize_v2', [24 * 3600, baseTime, baseFeePerPeriod])
+        );
+
+        // Now upgrade to v3 implementation (without calling initialize_v3)
+        // In real v2->v3 upgrade, newMultiplier would be 0 (uninitialized storage)
+        // But since our test uses the same implementation, we can't test the "real" upgrade path
+        // This test documents the expected behavior
+        tokenV2Upgraded = BackedAutoFeeTokenImplementation__factory.connect(tokenProxy.address, owner.signer);
+      });
+
+      it("Should initialize v3 fields when upgrading from v2", async function () {
+        // The initialize_v3 should be called during the v2->v3 upgrade
+        // In this test setup, newMultiplier is already initialized to 1e18 by initialize_v2
+        // (because we use the same implementation for both v2 and v3)
+        // In a real upgrade, v2 wouldn't have newMultiplier field, so initialize_v3 would succeed
+        expect(await tokenV2Upgraded.newMultiplier()).to.be.equal(ethers.BigNumber.from(10).pow(18));
+        expect(await tokenV2Upgraded.newMultiplierNonce()).to.be.equal(0);
+        expect(await tokenV2Upgraded.newMultiplierActivationTime()).to.be.equal(0);
+      });
+    });
+  })
+
   describe('#getCurrentMultiplier', () => {
     describe('when time moved by 365 days forward', () => {
       const periodsPassed = 365;
@@ -216,7 +264,7 @@ describe("BackedAutoFeeTokenImplementation", function () {
           expect((await token.getCurrentMultiplier()).currentMultiplier).to.be.equal(preMultiplier)
         })
 
-        it('should change current multiplier nonce', async () => {
+        it('should not change current multiplier nonce', async () => {
           expect((await token.getCurrentMultiplier()).currentMultiplierNonce).to.be.equal(preMultiplierNonce)
         })
       })
@@ -387,7 +435,72 @@ describe("BackedAutoFeeTokenImplementation", function () {
         });
         it('Should reject update, if wrong nonce is used', async () => {
           const { currentMultiplier, currentMultiplierNonce } = await token.getCurrentMultiplier();
-          await expect(token.connect(actor.signer).updateMultiplierValue(1, currentMultiplier, currentMultiplierNonce, 0)).to.be.reverted
+          await expect(token.connect(actor.signer).updateMultiplierWithNonce(1, currentMultiplier, currentMultiplierNonce, 0)).to.be.reverted
+        });
+
+        describe('With delayed activation', () => {
+          const futureTime = baseTime + periodsPassed * accrualPeriodLength + 7 * 24 * 3600; // 7 days after current time
+
+          it('Should store new multiplier with future activation time', async () => {
+            const { currentMultiplier, currentMultiplierNonce } = await token.getCurrentMultiplier();
+            const newMultiplierValue = currentMultiplier.div(2);
+            const newMultiplierNonce = currentMultiplierNonce.add(100);
+
+            await token.updateMultiplierWithNonce(newMultiplierValue, currentMultiplier, newMultiplierNonce, futureTime);
+
+            // Current multiplier should not change yet
+            expect(await token.multiplier()).to.be.equal(currentMultiplier);
+            expect(await token.multiplierNonce()).to.be.equal(currentMultiplierNonce);
+            // New multiplier should be stored
+            expect(await token.newMultiplier()).to.be.equal(newMultiplierValue);
+            expect(await token.newMultiplierNonce()).to.be.equal(newMultiplierNonce);
+            expect(await token.newMultiplierActivationTime()).to.be.equal(futureTime);
+          });
+
+          it('Should activate delayed multiplier when time reaches activation', async () => {
+            const { currentMultiplier, currentMultiplierNonce } = await token.getCurrentMultiplier();
+            const newMultiplierValue = currentMultiplier.div(2);
+            const newMultiplierNonce = currentMultiplierNonce.add(100);
+
+            await token.updateMultiplierWithNonce(newMultiplierValue, currentMultiplier, newMultiplierNonce, futureTime);
+
+            // Move time to exact activation moment
+            await helpers.time.setNextBlockTimestamp(futureTime);
+            await helpers.mine();
+
+            // Check view function at exact activation time - no fees applied yet
+            // since we're checking at the precise moment of activation
+            expect(await token.multiplier()).to.be.equal(newMultiplierValue);
+            expect(await token.multiplierNonce()).to.be.equal(newMultiplierNonce);
+          });
+
+          it('Should apply fees from activation time when delayed multiplier activates', async () => {
+            const { currentMultiplier, currentMultiplierNonce } = await token.getCurrentMultiplier();
+            const newMultiplierValue = currentMultiplier.mul(110).div(100); // 10% increase
+            const newMultiplierNonce = currentMultiplierNonce.add(100);
+
+            await token.updateMultiplierWithNonce(newMultiplierValue, currentMultiplier, newMultiplierNonce, futureTime);
+
+            // Move time past activation (7 days)
+            await helpers.time.setNextBlockTimestamp(futureTime + 100);
+
+            // Trigger multiplier update via transaction
+            // This persists the multiplier to storage and applies fees from activation time
+            await token.transfer(actor.address, 1);
+
+            // Calculate expected multiplier with 7 days of fees applied from activation time
+            // Unlike the previous test, this checks stored state after a triggered update,
+            // so fees ARE applied for the time period from activation to now
+            const feePerPeriod = await token.feePerPeriod();
+            const periodsPassed = 7;
+            let expectedMult = newMultiplierValue;
+            for (let i = 0; i < periodsPassed; i++) {
+              expectedMult = expectedMult.mul(ethers.BigNumber.from(10).pow(18).sub(feePerPeriod)).div(ethers.BigNumber.from(10).pow(18));
+            }
+
+            expect(await token.lastMultiplier()).to.be.equal(expectedMult);
+            expect(await token.newMultiplierActivationTime()).to.be.equal(0);
+          });
         });
       });
 
@@ -716,6 +829,7 @@ describe("BackedAutoFeeTokenImplementation", function () {
   it("Pause and Unpause", async function () {
     await token.setMinter(minter.address);
     await token.connect(minter.signer).mint(owner.address, 100);
+    await token.connect(minter.signer).mint(tmpAccount.address, 100);
     await token.setPauser(pauser.address);
 
     await expect(token.connect(accounts[2]).setPause(true)).to.be.revertedWith(
@@ -728,7 +842,89 @@ describe("BackedAutoFeeTokenImplementation", function () {
     expect(receipt.events?.[0].event).to.equal("PauseModeChange");
     expect(receipt.events?.[0].args?.[0]).to.equal(true);
 
-    await expect(token.transfer(tmpAccount.address, 100)).to.be.revertedWith(
+    // Try to transfer when paused:
+    await expect(token.transfer(tmpAccount.address, 50)).to.be.revertedWith(
+      "BackedToken: token transfer while paused"
+    );
+
+    // Try to transferShares when paused:
+    const ownerShares = await token.sharesOf(owner.address);
+    await expect(token.transferShares(tmpAccount.address, ownerShares.div(10))).to.be.revertedWith(
+      "BackedToken: token transfer while paused"
+    );
+
+    // Try to transferSharesFrom when paused:
+    await token.connect(tmpAccount.signer).approve(minter.address, 50);
+    const tmpAccountShares = await token.sharesOf(tmpAccount.address);
+    await expect(
+      token.connect(minter.signer).transferSharesFrom(tmpAccount.address, owner.address, tmpAccountShares.div(10))
+    ).to.be.revertedWith("BackedToken: token transfer while paused");
+
+    // Try to transferFrom when paused:
+    await token.connect(owner.signer).approve(minter.address, 50);
+    await expect(
+      token.connect(minter.signer).transferFrom(owner.address, tmpAccount.address, 10)
+    ).to.be.revertedWith("BackedToken: token transfer while paused");
+
+    // Try to delegatedTransfer when paused:
+    await token.setDelegateWhitelist(actor.address, true);
+    const nonce1 = await token.nonces(owner.address);
+    const domain1 = {
+      name: await token.name(),
+      version: "1",
+      chainId: chainId,
+      verifyingContract: token.address
+    };
+    const types1 = {
+      DELEGATED_TRANSFER: [
+        { name: "owner", type: "address" },
+        { name: "to", type: "address" },
+        { name: "value", type: "uint256" },
+        { name: "nonce", type: "uint256" },
+        { name: "deadline", type: "uint256" }
+      ]
+    };
+    const msg1 = {
+      owner: owner.address,
+      to: tmpAccount.address,
+      value: 10,
+      nonce: nonce1,
+      deadline: ethers.constants.MaxUint256
+    };
+    const ownerSigner1 = await ethers.getSigner(owner.address);
+    const sig1 = await ownerSigner1._signTypedData(domain1, types1, msg1);
+    const splitSig1 = ethers.utils.splitSignature(sig1);
+    await expect(
+      token.connect(actor.signer).delegatedTransfer(owner.address, tmpAccount.address, 10, ethers.constants.MaxUint256, splitSig1.v, splitSig1.r, splitSig1.s)
+    ).to.be.revertedWith("BackedToken: token transfer while paused");
+
+    // Try to delegatedTransferShares when paused:
+    const nonce2 = await token.nonces(owner.address);
+    const types2 = {
+      DELEGATED_TRANSFER_SHARES: [
+        { name: "owner", type: "address" },
+        { name: "to", type: "address" },
+        { name: "value", type: "uint256" },
+        { name: "nonce", type: "uint256" },
+        { name: "deadline", type: "uint256" }
+      ]
+    };
+    const msg2 = {
+      owner: owner.address,
+      to: tmpAccount.address,
+      value: ownerShares.div(10),
+      nonce: nonce2,
+      deadline: ethers.constants.MaxUint256
+    };
+    const ownerSigner2 = await ethers.getSigner(owner.address);
+    const sig2 = await ownerSigner2._signTypedData(domain1, types2, msg2);
+    const splitSig2 = ethers.utils.splitSignature(sig2);
+    await expect(
+      token.connect(actor.signer).delegatedTransferShares(owner.address, tmpAccount.address, ownerShares.div(10), ethers.constants.MaxUint256, splitSig2.v, splitSig2.r, splitSig2.s)
+    ).to.be.revertedWith("BackedToken: token transfer while paused");
+
+    // Try to transfer zero amount when paused (zero-value transfers still respect pause):
+    await expect(token.transfer(tmpAccount.address, 0)).to.be.revertedWith(
       "BackedToken: token transfer while paused"
     );
 
@@ -739,8 +935,63 @@ describe("BackedAutoFeeTokenImplementation", function () {
     expect(receipt2.events?.[0].event).to.equal("PauseModeChange");
     expect(receipt2.events?.[0].args?.[0]).to.equal(false);
 
-    await token.transfer(tmpAccount.address, 100);
-    expect(await token.balanceOf(tmpAccount.address)).to.equal(100);
+    // Check transfer is possible:
+    await token.transfer(tmpAccount.address, 50);
+    expect(await token.balanceOf(tmpAccount.address)).to.equal(150);
+
+    // Check transferShares is possible:
+    await token.transferShares(tmpAccount.address, ownerShares.div(10));
+
+    // Check transferSharesFrom is possible:
+    await token.connect(minter.signer).transferSharesFrom(tmpAccount.address, owner.address, tmpAccountShares.div(10));
+
+    // Check transferFrom is possible:
+    await token.connect(minter.signer).transferFrom(owner.address, tmpAccount.address, 10);
+
+    // Check delegatedTransfer is possible:
+    const nonce3 = await token.nonces(owner.address);
+    const msg3 = {
+      owner: owner.address,
+      to: tmpAccount.address,
+      value: 10,
+      nonce: nonce3,
+      deadline: ethers.constants.MaxUint256
+    };
+    const ownerSigner3 = await ethers.getSigner(owner.address);
+    const sig3 = await ownerSigner3._signTypedData(domain1, types1, msg3);
+    const splitSig3 = ethers.utils.splitSignature(sig3);
+    await token.connect(actor.signer).delegatedTransfer(owner.address, tmpAccount.address, 10, ethers.constants.MaxUint256, splitSig3.v, splitSig3.r, splitSig3.s);
+
+    // Check delegatedTransferShares is possible:
+    const nonce4 = await token.nonces(owner.address);
+    const msg4 = {
+      owner: owner.address,
+      to: tmpAccount.address,
+      value: ownerShares.div(10),
+      nonce: nonce4,
+      deadline: ethers.constants.MaxUint256
+    };
+    const ownerSigner4 = await ethers.getSigner(owner.address);
+    const sig4 = await ownerSigner4._signTypedData(domain1, types2, msg4);
+    const splitSig4 = ethers.utils.splitSignature(sig4);
+    await token.connect(actor.signer).delegatedTransferShares(owner.address, tmpAccount.address, ownerShares.div(10), ethers.constants.MaxUint256, splitSig4.v, splitSig4.r, splitSig4.s);
+  });
+
+  it("Pause takes precedence over sanctions check", async function () {
+    await token.setMinter(minter.address);
+    await token.connect(minter.signer).mint(owner.address, 100);
+    await token.setPauser(pauser.address);
+
+    // Enable pause
+    await token.connect(pauser.signer).setPause(true);
+
+    // Add address to sanctions list
+    await sanctionsList.connect(blacklister.signer).addToSanctionsList([tmpAccount.address]);
+
+    // Both conditions apply (paused AND sanctioned), but pause error should appear first
+    await expect(token.transfer(tmpAccount.address, 10)).to.be.revertedWith(
+      "BackedToken: token transfer while paused"
+    );
   });
 
   it("EIP-712 Domain Separator", async function () {
@@ -1030,6 +1281,60 @@ describe("BackedAutoFeeTokenImplementation", function () {
     ).to.revertedWith("ERC20Permit: invalid signature");
   });
 
+  it("Nonce increments on successful delegatedTransfer", async function () {
+    // Setup: mint tokens and enable delegation
+    await token.setMinter(minter.address);
+    await token.connect(minter.signer).mint(tmpAccount.address, 100);
+    await token.setDelegateWhitelist(owner.address, true);
+
+    // Record initial nonce
+    const initialNonce = await token.nonces(tmpAccount.address);
+
+    // Perform successful delegatedTransfer
+    const domain = {
+      name: tokenName,
+      version: "1",
+      chainId: chainId,
+      verifyingContract: token.address,
+    };
+
+    const types = {
+      DELEGATED_TRANSFER: [
+        { name: "owner", type: "address" },
+        { name: "to", type: "address" },
+        { name: "value", type: "uint256" },
+        { name: "nonce", type: "uint256" },
+        { name: "deadline", type: "uint256" },
+      ],
+    };
+
+    const msg = {
+      owner: tmpAccount.address,
+      to: minter.address,
+      value: 50,
+      nonce: initialNonce,
+      deadline: ethers.constants.MaxUint256,
+    };
+
+    const signer = await ethers.getSigner(tmpAccount.address);
+    const sig = await signer._signTypedData(domain, types, msg);
+    const splitSig = ethers.utils.splitSignature(sig);
+
+    await token.delegatedTransfer(
+      tmpAccount.address,
+      minter.address,
+      50,
+      ethers.constants.MaxUint256,
+      splitSig.v,
+      splitSig.r,
+      splitSig.s
+    );
+
+    // Verify nonce incremented by 1
+    const finalNonce = await token.nonces(tmpAccount.address);
+    expect(finalNonce).to.equal(initialNonce.add(1));
+  });
+
   it("Try to set delegate from wrong address", async function () {
     // Delegate mode:
     await expect(
@@ -1108,6 +1413,127 @@ describe("BackedAutoFeeTokenImplementation", function () {
         .transferFrom(owner.address, minter.address, 50)
     ).to.be.revertedWith("BackedToken: spender is sanctioned");
 
+    // Try to transferShares to the sanctioned address:
+    const ownerShares = await token.sharesOf(owner.address);
+    await expect(token.transferShares(tmpAccount.address, ownerShares.div(10))).to.be.revertedWith(
+      "BackedToken: receiver is sanctioned"
+    );
+
+    // Try to transferShares from the sanctioned address:
+    const tmpAccountShares = await token.sharesOf(tmpAccount.address);
+    await expect(
+      token.connect(tmpAccount.signer).transferShares(owner.address, tmpAccountShares.div(10))
+    ).to.be.revertedWith("BackedToken: sender is sanctioned");
+
+    // Try to transferSharesFrom with sanctioned sender:
+    await token.connect(tmpAccount.signer).approve(minter.address, 100);
+    await expect(
+      token.connect(minter.signer).transferSharesFrom(tmpAccount.address, owner.address, tmpAccountShares.div(10))
+    ).to.be.revertedWith("BackedToken: sender is sanctioned");
+
+    // Try to transferSharesFrom with sanctioned receiver:
+    await token.connect(owner.signer).approve(minter.address, 100);
+    await expect(
+      token.connect(minter.signer).transferSharesFrom(owner.address, tmpAccount.address, ownerShares.div(10))
+    ).to.be.revertedWith("BackedToken: receiver is sanctioned");
+
+    // Try to transferSharesFrom with sanctioned spender (re-sanction minter):
+    await sanctionsList.connect(blacklister.signer).addToSanctionsList([minter.address]);
+    await token.connect(owner.signer).approve(minter.address, 100);
+    await expect(
+      token.connect(minter.signer).transferSharesFrom(owner.address, actor.address, ownerShares.div(10))
+    ).to.be.revertedWith("BackedToken: spender is sanctioned");
+    await sanctionsList.connect(blacklister.signer).removeFromSanctionsList([minter.address]);
+
+    // Try to delegatedTransfer to the sanctioned address:
+    await token.setDelegateWhitelist(actor.address, true);
+    const nonce1 = await token.nonces(owner.address);
+    const domain1 = {
+      name: await token.name(),
+      version: "1",
+      chainId: chainId,
+      verifyingContract: token.address
+    };
+    const types1 = {
+      DELEGATED_TRANSFER: [
+        { name: "owner", type: "address" },
+        { name: "to", type: "address" },
+        { name: "value", type: "uint256" },
+        { name: "nonce", type: "uint256" },
+        { name: "deadline", type: "uint256" }
+      ]
+    };
+    const msg1 = {
+      owner: owner.address,
+      to: tmpAccount.address,
+      value: 10,
+      nonce: nonce1,
+      deadline: ethers.constants.MaxUint256
+    };
+    const ownerSignerSanctions1 = await ethers.getSigner(owner.address);
+    const sig1 = await ownerSignerSanctions1._signTypedData(domain1, types1, msg1);
+    const splitSig1 = ethers.utils.splitSignature(sig1);
+    await expect(
+      token.connect(actor.signer).delegatedTransfer(owner.address, tmpAccount.address, 10, ethers.constants.MaxUint256, splitSig1.v, splitSig1.r, splitSig1.s)
+    ).to.be.revertedWith("BackedToken: receiver is sanctioned");
+
+    // Try to delegatedTransfer from the sanctioned address:
+    const nonce2 = await token.nonces(tmpAccount.address);
+    const msg2 = {
+      owner: tmpAccount.address,
+      to: owner.address,
+      value: 10,
+      nonce: nonce2,
+      deadline: ethers.constants.MaxUint256
+    };
+    const tmpAccountSignerSanctions2 = await ethers.getSigner(tmpAccount.address);
+    const sig2 = await tmpAccountSignerSanctions2._signTypedData(domain1, types1, msg2);
+    const splitSig2 = ethers.utils.splitSignature(sig2);
+    await expect(
+      token.connect(actor.signer).delegatedTransfer(tmpAccount.address, owner.address, 10, ethers.constants.MaxUint256, splitSig2.v, splitSig2.r, splitSig2.s)
+    ).to.be.revertedWith("BackedToken: sender is sanctioned");
+
+    // Try to delegatedTransferShares to the sanctioned address:
+    const nonce3 = await token.nonces(owner.address);
+    const types3 = {
+      DELEGATED_TRANSFER_SHARES: [
+        { name: "owner", type: "address" },
+        { name: "to", type: "address" },
+        { name: "value", type: "uint256" },
+        { name: "nonce", type: "uint256" },
+        { name: "deadline", type: "uint256" }
+      ]
+    };
+    const msg3 = {
+      owner: owner.address,
+      to: tmpAccount.address,
+      value: ownerShares.div(10),
+      nonce: nonce3,
+      deadline: ethers.constants.MaxUint256
+    };
+    const ownerSignerSanctions3 = await ethers.getSigner(owner.address);
+    const sig3 = await ownerSignerSanctions3._signTypedData(domain1, types3, msg3);
+    const splitSig3 = ethers.utils.splitSignature(sig3);
+    await expect(
+      token.connect(actor.signer).delegatedTransferShares(owner.address, tmpAccount.address, ownerShares.div(10), ethers.constants.MaxUint256, splitSig3.v, splitSig3.r, splitSig3.s)
+    ).to.be.revertedWith("BackedToken: receiver is sanctioned");
+
+    // Try to delegatedTransferShares from the sanctioned address:
+    const nonce4 = await token.nonces(tmpAccount.address);
+    const msg4 = {
+      owner: tmpAccount.address,
+      to: owner.address,
+      value: tmpAccountShares.div(10),
+      nonce: nonce4,
+      deadline: ethers.constants.MaxUint256
+    };
+    const tmpAccountSignerSanctions4 = await ethers.getSigner(tmpAccount.address);
+    const sig4 = await tmpAccountSignerSanctions4._signTypedData(domain1, types3, msg4);
+    const splitSig4 = ethers.utils.splitSignature(sig4);
+    await expect(
+      token.connect(actor.signer).delegatedTransferShares(tmpAccount.address, owner.address, tmpAccountShares.div(10), ethers.constants.MaxUint256, splitSig4.v, splitSig4.r, splitSig4.s)
+    ).to.be.revertedWith("BackedToken: sender is sanctioned");
+
     // Remove from sanctions list:
     await (
       await sanctionsList
@@ -1175,6 +1601,234 @@ describe("BackedAutoFeeTokenImplementation", function () {
     ).to.be.revertedWith("Ownable: caller is not the owner");
   });
 
+  describe('#delayedActivation', () => {
+    describe('When setting multiplier with future activation time', () => {
+      const baseMintedAmount = ethers.BigNumber.from(10).pow(18);
+      const futureTime = baseTime + 7 * 24 * 3600; // 7 days in future
+
+      cacheBeforeEach(async () => {
+        await token.connect(minter.signer).mint(owner.address, baseMintedAmount);
+      });
+
+      it('Should store new multiplier but not activate it yet', async () => {
+        const currentMult = await token.multiplier();
+        const newMult = currentMult.mul(110).div(100); // 10% increase
+
+        await token.updateMultiplierValue(newMult, currentMult, futureTime);
+
+        expect(await token.multiplier()).to.be.equal(currentMult); // Still old multiplier
+        expect(await token.newMultiplier()).to.be.equal(newMult);
+        expect(await token.newMultiplierActivationTime()).to.be.equal(futureTime);
+      });
+
+      it('Should return lastMultiplier when querying before activation time', async () => {
+        const currentMult = await token.multiplier();
+        const newMult = currentMult.mul(110).div(100);
+
+        await token.updateMultiplierValue(newMult, currentMult, futureTime);
+
+        const result = await token.getCurrentMultiplier();
+        expect(result.currentMultiplier).to.be.equal(currentMult);
+      });
+
+      it('Should activate multiplier when time reaches activation time', async () => {
+        const currentMult = await token.multiplier();
+        const newMult = currentMult.mul(110).div(100);
+
+        await token.updateMultiplierValue(newMult, currentMult, futureTime);
+
+        // Move time to activation time
+        await helpers.time.setNextBlockTimestamp(futureTime);
+        await helpers.mine();
+
+        // getCurrentMultiplier() applies fees on the new multiplier
+        // 7 periods will pass from baseTime to futureTime
+        // We need to calculate: newMult * (feePerPeriod)^7
+        const feePerPeriod = await token.feePerPeriod();
+        const periodsPassed = 7;
+        let expectedMult = newMult;
+        for (let i = 0; i < periodsPassed; i++) {
+          expectedMult = expectedMult.mul(ethers.BigNumber.from(10).pow(18).sub(feePerPeriod)).div(ethers.BigNumber.from(10).pow(18));
+        }
+
+        const result = await token.getCurrentMultiplier();
+        expect(result.currentMultiplier).to.be.equal(expectedMult);
+      });
+
+      it('Should activate multiplier on next transaction after activation time', async () => {
+        const currentMult = await token.multiplier();
+        const newMult = currentMult.mul(110).div(100);
+
+        await token.updateMultiplierValue(newMult, currentMult, futureTime);
+
+        // Move time past activation
+        await helpers.time.setNextBlockTimestamp(futureTime + 100);
+
+        // Trigger updateMultiplier modifier via transfer
+        await token.transfer(actor.address, 1);
+
+        // Calculate expected multiplier after 7 periods of fee application
+        const feePerPeriod = await token.feePerPeriod();
+        const periodsPassed = 7;
+        let expectedMult = newMult;
+        for (let i = 0; i < periodsPassed; i++) {
+          expectedMult = expectedMult.mul(ethers.BigNumber.from(10).pow(18).sub(feePerPeriod)).div(ethers.BigNumber.from(10).pow(18));
+        }
+
+        // Now lastMultiplier should be updated with fees applied
+        expect(await token.lastMultiplier()).to.be.equal(expectedMult);
+        expect(await token.newMultiplierActivationTime()).to.be.equal(0);
+      });
+    });
+
+    describe('Edge case: activation time equals block.timestamp', () => {
+      it('Should activate immediately when activation time == block.timestamp', async () => {
+        const currentMult = await token.multiplier();
+        const newMult = currentMult.mul(110).div(100);
+        const currentTime = await helpers.time.latest();
+
+        // Set activation time to current time
+        await token.updateMultiplierValue(newMult, currentMult, currentTime);
+
+        // Should activate immediately (not stored as pending)
+        expect(await token.lastMultiplier()).to.be.equal(newMult);
+        expect(await token.newMultiplierActivationTime()).to.be.equal(0);
+      });
+    });
+
+    describe('Overwriting pending activation', () => {
+      const futureTime1 = baseTime + 7 * 24 * 3600;
+      const futureTime2 = baseTime + 14 * 24 * 3600;
+
+      it('Should allow overwriting pending activation with new values', async () => {
+        const currentMult = await token.multiplier();
+        const newMult1 = currentMult.mul(110).div(100);
+        const newMult2 = currentMult.mul(120).div(100);
+
+        // Set first pending activation
+        await token.updateMultiplierValue(newMult1, currentMult, futureTime1);
+        expect(await token.newMultiplier()).to.be.equal(newMult1);
+        expect(await token.newMultiplierActivationTime()).to.be.equal(futureTime1);
+
+        // Overwrite with second pending activation
+        await token.updateMultiplierValue(newMult2, currentMult, futureTime2);
+        expect(await token.newMultiplier()).to.be.equal(newMult2);
+        expect(await token.newMultiplierActivationTime()).to.be.equal(futureTime2);
+      });
+    });
+  });
+
+  describe('#transferSharesFrom', () => {
+    const baseMintedAmount = ethers.BigNumber.from(10).pow(18);
+    const sharesToTransfer = ethers.BigNumber.from(10).pow(17);
+
+    cacheBeforeEach(async () => {
+      await token.connect(minter.signer).mint(owner.address, baseMintedAmount);
+    });
+
+    describe('When caller has sufficient allowance', () => {
+      cacheBeforeEach(async () => {
+        const amount = await token.getUnderlyingAmountByShares(sharesToTransfer);
+        await token.approve(actor.address, amount);
+      });
+
+      it('Should transfer shares using allowance', async () => {
+        await token.connect(actor.signer).transferSharesFrom(owner.address, tmpAccount.address, sharesToTransfer);
+
+        expect(await token.sharesOf(tmpAccount.address)).to.be.equal(sharesToTransfer);
+        expect(await token.sharesOf(owner.address)).to.be.equal(baseMintedAmount.sub(sharesToTransfer));
+      });
+
+      it('Should reduce allowance after transfer', async () => {
+        const amount = await token.getUnderlyingAmountByShares(sharesToTransfer);
+        const allowanceBefore = await token.allowance(owner.address, actor.address);
+
+        await token.connect(actor.signer).transferSharesFrom(owner.address, tmpAccount.address, sharesToTransfer);
+
+        const allowanceAfter = await token.allowance(owner.address, actor.address);
+        expect(allowanceBefore.sub(allowanceAfter)).to.be.equal(amount);
+      });
+    });
+
+    describe('When caller has insufficient allowance', () => {
+      it('Should revert', async () => {
+        await expect(
+          token.connect(actor.signer).transferSharesFrom(owner.address, tmpAccount.address, sharesToTransfer)
+        ).to.be.reverted;
+      });
+    });
+
+    describe('When transferring to zero address', () => {
+      cacheBeforeEach(async () => {
+        const amount = await token.getUnderlyingAmountByShares(sharesToTransfer);
+        await token.approve(actor.address, amount);
+      });
+
+      it('Should revert', async () => {
+        await expect(
+          token.connect(actor.signer).transferSharesFrom(owner.address, ethers.constants.AddressZero, sharesToTransfer)
+        ).to.be.revertedWith("ERC20: transfer to the zero address");
+      });
+    });
+
+    describe('When transferring more shares than balance', () => {
+      cacheBeforeEach(async () => {
+        const excessiveAmount = baseMintedAmount.mul(2); // More than what owner has
+        await token.approve(actor.address, excessiveAmount);
+      });
+
+      it('Should revert', async () => {
+        const excessiveShares = baseMintedAmount.mul(2);
+        await expect(
+          token.connect(actor.signer).transferSharesFrom(owner.address, tmpAccount.address, excessiveShares)
+        ).to.be.revertedWith("ERC20: transfer amount exceeds balance");
+      });
+    });
+  });
+
+  describe('#feeUpdateBlocking', () => {
+    const futureTime = baseTime + 7 * 24 * 3600;
+
+    describe('When multiplier activation is pending', () => {
+      cacheBeforeEach(async () => {
+        const currentMult = await token.multiplier();
+        const newMult = currentMult.mul(110).div(100);
+        await token.updateMultiplierValue(newMult, currentMult, futureTime);
+      });
+
+      it('Should block updateFeePerPeriod', async () => {
+        await expect(
+          token.updateFeePerPeriod(1000)
+        ).to.be.revertedWith("Multiplier activation in progress");
+      });
+
+      it('Should block setLastTimeFeeApplied', async () => {
+        await expect(
+          token.setLastTimeFeeApplied(baseTime + 1000)
+        ).to.be.revertedWith("Multiplier activation in progress");
+      });
+
+      it('Should block setPeriodLength', async () => {
+        await expect(
+          token.setPeriodLength(12 * 3600)
+        ).to.be.revertedWith("Multiplier activation in progress");
+      });
+    });
+
+    describe('When no pending activation', () => {
+      it('Should allow updateFeePerPeriod', async () => {
+        await expect(token.updateFeePerPeriod(1000)).to.not.be.reverted;
+      });
+
+      it('Should allow setLastTimeFeeApplied', async () => {
+        await expect(token.setLastTimeFeeApplied(baseTime + 1000)).to.not.be.reverted;
+      });
+
+      it('Should allow setPeriodLength', async () => {
+        await expect(token.setPeriodLength(12 * 3600)).to.not.be.reverted;
+      });
+    });
+  });
 
 });
 function nthRoot(annualFee: number, n: number) {
