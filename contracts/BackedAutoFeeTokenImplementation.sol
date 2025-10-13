@@ -310,8 +310,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         );
         _checkOwner(owner, structHash, v, r, s);
 
-        uint256 amount = _getUnderlyingAmountByShares(value, lastMultiplier);
-        _transfer(owner, to, amount);
+        _transferShares(owner, to, value);
     }
 
     /**
@@ -327,8 +326,8 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         uint256 sharesAmount
     ) external virtual updateMultiplier returns (bool) {
         address owner = _msgSender();
-        uint256 amount = _getUnderlyingAmountByShares(sharesAmount, lastMultiplier);
-        _transfer(owner, to, amount);
+        _transferShares(owner, to, sharesAmount);
+
         return true;
     }
 
@@ -349,7 +348,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         uint256 amount = _getUnderlyingAmountByShares(sharesAmount, lastMultiplier);
         address spender = _msgSender();
         _spendAllowance(from, spender, amount);
-        _transfer(from, to, amount);
+        _transferShares(from, to, sharesAmount, amount);
         return true;
     }
 
@@ -461,10 +460,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
      *
      * This internal function is equivalent to {transfer}, and can be used to
      * e.g. implement automatic token fees, slashing mechanisms, etc.
-     *
-     * Emits a {Transfer} event.
-     * Emits a {TransferShares} event.
-     *
+     * 
      * Requirements:
      *
      * - `from` cannot be the zero address.
@@ -476,31 +472,74 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         address to,
         uint256 amount
     ) internal virtual override {
-        require(from != address(0), "ERC20: transfer from the zero address");
-        require(to != address(0), "ERC20: transfer to the zero address");
-
-        _beforeTokenTransfer(from, to, amount);
         (uint256 multiplier, ,) = getCurrentMultiplier();
         uint256 _sharesAmount = _getSharesByUnderlyingAmount(
             amount,
             multiplier
         );
+        _transferShares(from, to, _sharesAmount, amount);
+    }
+
+    /**
+     * @dev Moves `shares amount` of tokens from `sender` to `recipient`.
+     *
+     * Requirements:
+     *
+     * - `from` cannot be the zero address.
+     * - `to` cannot be the zero address.
+     * - `from` must have a balance of at least `sharesAmount`.
+     */
+    function _transferShares(
+        address from,
+        address to,
+        uint256 sharesAmount
+    ) internal virtual {
+        (uint256 multiplier, ,) = getCurrentMultiplier();
+         uint256 amount = _getUnderlyingAmountByShares(
+            sharesAmount,
+            multiplier
+        );
+        _transferShares(from, to, sharesAmount, amount);
+    }
+    
+    /**
+     * @dev Moves `shares amount` of tokens from `sender` to `recipient`.
+     *
+     * Emits a {Transfer} event.
+     * Emits a {TransferShares} event.
+     *
+     * Requirements:
+     *
+     * - `from` cannot be the zero address.
+     * - `to` cannot be the zero address.
+     * - `from` must have a balance of at least `sharesAmount`.
+     */
+    function _transferShares(
+        address from,
+        address to,
+        uint256 sharesAmount,
+        uint256 tokenAmount
+    ) internal virtual {
+        require(from != address(0), "ERC20: transfer from the zero address");
+        require(to != address(0), "ERC20: transfer to the zero address");
+
+        _beforeTokenTransfer(from, to, tokenAmount);
 
         uint256 currentSenderShares = _shares[from];
         require(
-            currentSenderShares >= _sharesAmount,
+            currentSenderShares >= sharesAmount,
             "ERC20: transfer amount exceeds balance"
         );
 
         unchecked {
-            _shares[from] = currentSenderShares - (_sharesAmount);
+            _shares[from] = currentSenderShares - (sharesAmount);
         }
-        _shares[to] = _shares[to] + (_sharesAmount);
+        _shares[to] = _shares[to] + (sharesAmount);
 
-        emit Transfer(from, to, amount);
-        emit TransferShares(from, to, _sharesAmount);
+        emit Transfer(from, to, tokenAmount);
+        emit TransferShares(from, to, sharesAmount);
 
-        _afterTokenTransfer(from, to, amount);
+        _afterTokenTransfer(from, to, tokenAmount);
     }
 
     /** @dev Creates `amount` tokens and assigns them to `account`, increasing
