@@ -20,5 +20,18 @@ module.exports = {
       "error",
       { ignores: ["modules"] },
     ],
+    camelcase: [
+      "error",
+      {
+        allow: ["^.*__factory$"],
+      },
+    ],
+    "node/no-missing-import": [
+      "error",
+      {
+        allowModules: [],
+        tryExtensions: [".js", ".json", ".node", ".ts", ".d.ts"],
+      },
+    ],
   },
 };

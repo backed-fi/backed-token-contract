@@ -1,27 +1,26 @@
 /* eslint-disable camelcase */
 /* eslint-disable prettier/prettier */
-import { ProxyAdmin__factory } from '../typechain/factories/ProxyAdmin__factory';
-import { ProxyAdmin } from '../typechain/ProxyAdmin';
-import { BackedAutoFeeTokenImplementation__factory } from '../typechain/factories/BackedAutoFeeTokenImplementation__factory';
-import { BackedAutoFeeTokenImplementation } from '../typechain/BackedAutoFeeTokenImplementation';
+import { ProxyAdmin__factory } from "../typechain/factories/ProxyAdmin__factory";
+import { ProxyAdmin } from "../typechain/ProxyAdmin";
+import {
+  BackedAutoFeeTokenImplementation__factory
+} from "../typechain/factories/BackedAutoFeeTokenImplementation__factory";
+import { BackedAutoFeeTokenImplementation } from "../typechain/BackedAutoFeeTokenImplementation";
 import * as helpers from "@nomicfoundation/hardhat-network-helpers";
 
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { BigNumber, Signer } from "ethers";
 import {
-  BackedTokenImplementation__factory,
-  BackedTokenProxy,
   BackedTokenProxy__factory,
   SanctionsListMock,
   SanctionsListMock__factory,
   WrappedBackedTokenImplementation,
   WrappedBackedTokenImplementation__factory,
-  WrappedBackedTokenProxy__factory,
-  // eslint-disable-next-line node/no-missing-import
+  WrappedBackedTokenProxy__factory
 } from "../typechain";
 import { cacheBeforeEach } from "./helpers";
-import Decimal from 'decimal.js';
+import Decimal from "decimal.js";
 
 type SignerWithAddress = {
   signer: Signer;
@@ -158,7 +157,8 @@ describe("WrappedBackedTokenImplementation", function () {
         const previousMultiplier = await token.multiplier();
         await token.updateMultiplierValue(
           previousMultiplier.mul(100 + multiplierIncreasePercentage).div(100),
-          previousMultiplier
+          previousMultiplier,
+          0
         )
       })
 
