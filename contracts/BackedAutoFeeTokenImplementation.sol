@@ -408,7 +408,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
      *
      * @param pendingNewMultiplier New multiplier value
      * @param oldMultiplier Old multiplier value
-     * @param pendingNewMultiplierActivationTime Time when new multiplier becomes active
+     * @param pendingNewMultiplierActivationTime Time when new multiplier becomes active, which needs to take place before start of the next period
      */
     function updateMultiplierValue(
         uint256 pendingNewMultiplier,
