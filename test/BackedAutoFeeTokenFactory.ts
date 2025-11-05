@@ -270,7 +270,7 @@ describe("BackedAutoFeeTokenFactory", function () {
       pauser: pauser.address,
       sanctionsList: sanctionsList.address,
       feePerPeriod: 1001,
-      lastTimeFeeApplied: Math.round(Date.now() / 1000),
+      lastTimeFeeApplied: Math.floor(Date.now() / 1000) - 3600,
       periodLength: 24 * 3600,
       multiplierUpdater: multiplierUpdater.address
     };
