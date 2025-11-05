@@ -480,10 +480,10 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         address to,
         uint256 amount
     ) internal virtual override {
-        (uint256 multiplier,,) = getCurrentMultiplier();
+        (uint256 currentMultiplier,,) = getCurrentMultiplier();
         uint256 _sharesAmount = _getSharesByUnderlyingAmount(
             amount,
-            multiplier
+            currentMultiplier
         );
         _transferShares(from, to, _sharesAmount, amount);
     }
@@ -502,10 +502,10 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         address to,
         uint256 sharesAmount
     ) internal virtual {
-        (uint256 multiplier,,) = getCurrentMultiplier();
+        (uint256 currentMultiplier,,) = getCurrentMultiplier();
          uint256 amount = _getUnderlyingAmountByShares(
             sharesAmount,
-            multiplier
+            currentMultiplier
         );
         _transferShares(from, to, sharesAmount, amount);
     }
@@ -564,8 +564,8 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         require(account != address(0), "ERC20: mint to the zero address");
 
         _beforeTokenTransfer(address(0), account, amount);
-        (uint256 multiplier,,) = getCurrentMultiplier();
-        uint256 sharesAmount = _getSharesByUnderlyingAmount(amount, multiplier);
+        (uint256 currentMultiplier,,) = getCurrentMultiplier();
+        uint256 sharesAmount = _getSharesByUnderlyingAmount(amount, currentMultiplier);
 
         _totalShares += sharesAmount;
         _shares[account] += sharesAmount;
@@ -591,8 +591,8 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         require(account != address(0), "ERC20: burn from the zero address");
 
         _beforeTokenTransfer(account, address(0), amount);
-        (uint256 multiplier,,) = getCurrentMultiplier();
-        uint256 sharesAmount = _getSharesByUnderlyingAmount(amount, multiplier);
+        (uint256 currentMultiplier,,) = getCurrentMultiplier();
+        uint256 sharesAmount = _getSharesByUnderlyingAmount(amount, currentMultiplier);
 
         uint256 accountBalance = _shares[account];
         require(
