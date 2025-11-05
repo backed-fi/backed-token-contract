@@ -408,7 +408,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
      *
      * @param pendingNewMultiplier New multiplier value
      * @param oldMultiplier Old multiplier value
-     * @param pendingNewMultiplierActivationTime Time when new multiplier becomes active
+     * @param pendingNewMultiplierActivationTime Time when new multiplier becomes active, which needs to take place before start of the next period
      */
     function updateMultiplierValue(
         uint256 pendingNewMultiplier,
@@ -608,6 +608,8 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
      * Emit an {MultiplierUpdated} event.
      */
     function _updateMultiplier(uint256 pendingNewMultiplier, uint256 pendingNewMultiplierNonce, uint256 pendingNewMultiplierActivationTime) internal virtual {
+        require(pendingNewMultiplier != 0, "BackedToken: Multiplier cannot be zero");
+        require(pendingNewMultiplierActivationTime < lastTimeFeeApplied + periodLength, "BackedToken: Activation time needs to be before next period");
 
         newMultiplier = pendingNewMultiplier;
         newMultiplierNonce = pendingNewMultiplierNonce;

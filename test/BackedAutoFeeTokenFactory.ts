@@ -297,6 +297,7 @@ describe("BackedAutoFeeTokenFactory", function () {
   });
 
   it("should not deploy the same token twice", async () => {
+    const lastTimeFeeApplied = Math.round(Date.now() / 1000);
     await (
       await factory.deployToken(
         {
@@ -308,7 +309,7 @@ describe("BackedAutoFeeTokenFactory", function () {
           pauser: pauser.address,
           sanctionsList: sanctionsList.address,
           feePerPeriod: 0,
-          lastTimeFeeApplied: Math.round(Date.now() / 1000),
+          lastTimeFeeApplied: lastTimeFeeApplied,
           periodLength: 24 * 3600,
           multiplierUpdater: multiplierUpdater.address
         }
@@ -326,7 +327,7 @@ describe("BackedAutoFeeTokenFactory", function () {
           pauser: pauser.address,
           sanctionsList: sanctionsList.address,
           feePerPeriod: 0,
-          lastTimeFeeApplied: Math.round(Date.now() / 1000),
+          lastTimeFeeApplied: lastTimeFeeApplied,
           periodLength: 24 * 3600,
           multiplierUpdater: multiplierUpdater.address
         }

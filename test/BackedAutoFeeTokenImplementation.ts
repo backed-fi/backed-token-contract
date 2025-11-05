@@ -439,7 +439,7 @@ describe("BackedAutoFeeTokenImplementation", function () {
         });
 
         describe('With delayed activation', () => {
-          const futureTime = baseTime + periodsPassed * accrualPeriodLength + 7 * 24 * 3600; // 7 days after current time
+          const futureTime = baseTime + (periodsPassed + 1) * accrualPeriodLength - 60; // 60 seconds before the end of the current period
 
           it('Should store new multiplier with future activation time', async () => {
             const { currentMultiplier, currentMultiplierNonce } = await token.getCurrentMultiplier();
@@ -482,7 +482,7 @@ describe("BackedAutoFeeTokenImplementation", function () {
             await token.updateMultiplierWithNonce(newMultiplierValue, currentMultiplier, newMultiplierNonce, futureTime);
 
             // Move time past activation (7 days)
-            await helpers.time.setNextBlockTimestamp(futureTime + 100);
+            await helpers.time.setNextBlockTimestamp(futureTime + accrualPeriodLength * 7);
 
             // Trigger multiplier update via transaction
             // This persists the multiplier to storage and applies fees from activation time
@@ -1604,7 +1604,7 @@ describe("BackedAutoFeeTokenImplementation", function () {
   describe('#delayedActivation', () => {
     describe('When setting multiplier with future activation time', () => {
       const baseMintedAmount = ethers.BigNumber.from(10).pow(18);
-      const futureTime = baseTime + 7 * 24 * 3600; // 7 days in future
+      const futureTime = baseTime + accrualPeriodLength - 60; // 60 seconds before the end of the current period
 
       cacheBeforeEach(async () => {
         await token.connect(minter.signer).mint(owner.address, baseMintedAmount);
@@ -1641,18 +1641,8 @@ describe("BackedAutoFeeTokenImplementation", function () {
         await helpers.time.setNextBlockTimestamp(futureTime);
         await helpers.mine();
 
-        // getCurrentMultiplier() applies fees on the new multiplier
-        // 7 periods will pass from baseTime to futureTime
-        // We need to calculate: newMult * (feePerPeriod)^7
-        const feePerPeriod = await token.feePerPeriod();
-        const periodsPassed = 7;
-        let expectedMult = newMult;
-        for (let i = 0; i < periodsPassed; i++) {
-          expectedMult = expectedMult.mul(ethers.BigNumber.from(10).pow(18).sub(feePerPeriod)).div(ethers.BigNumber.from(10).pow(18));
-        }
-
         const result = await token.getCurrentMultiplier();
-        expect(result.currentMultiplier).to.be.equal(expectedMult);
+        expect(result.currentMultiplier).to.be.equal(newMult);
       });
 
       it('Should activate multiplier on next transaction after activation time', async () => {
@@ -1662,7 +1652,7 @@ describe("BackedAutoFeeTokenImplementation", function () {
         await token.updateMultiplierValue(newMult, currentMult, futureTime);
 
         // Move time past activation
-        await helpers.time.setNextBlockTimestamp(futureTime + 100);
+        await helpers.time.setNextBlockTimestamp(futureTime + 7 * accrualPeriodLength);
 
         // Trigger updateMultiplier modifier via transfer
         await token.transfer(actor.address, 1);
@@ -1697,8 +1687,8 @@ describe("BackedAutoFeeTokenImplementation", function () {
     });
 
     describe('Overwriting pending activation', () => {
-      const futureTime1 = baseTime + 7 * 24 * 3600;
-      const futureTime2 = baseTime + 14 * 24 * 3600;
+      const futureTime1 = baseTime + accrualPeriodLength / 4;
+      const futureTime2 = baseTime + accrualPeriodLength / 2;
 
       it('Should allow overwriting pending activation with new values', async () => {
         const currentMult = await token.multiplier();
@@ -1787,7 +1777,7 @@ describe("BackedAutoFeeTokenImplementation", function () {
   });
 
   describe('#feeUpdateBlocking', () => {
-    const futureTime = baseTime + 7 * 24 * 3600;
+    const futureTime = baseTime + accrualPeriodLength / 2;
 
     describe('When multiplier activation is pending', () => {
       cacheBeforeEach(async () => {
