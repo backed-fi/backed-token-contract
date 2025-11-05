@@ -81,6 +81,8 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     uint256 private multiplierNonce_unused;
 
     // Fields supporting future multiplier activation time:
+
+    // New multiplier update factor value, in 1e18 precision:
     uint256 public newMultiplierUpdate;
     // Activation time for new multiplier update, zero means no pending update:
     uint256 public newMultiplierActivationTime;
@@ -137,9 +139,10 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         _;
     }
     
-    // constructor, set lastTimeFeeApplied to lock the implementation instance.
+    // constructor, set lastTimeFeeApplied and newMultiplierUpdate to lock the implementation instance.
     constructor () {
         lastTimeFeeApplied = 1;
+        newMultiplierUpdate = 1e18;
     }
 
     // Initializers:
