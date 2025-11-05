@@ -384,7 +384,11 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     }
 
     /**
-     * @dev Function to change the contract multiplier, only if oldMultiplier did not change in the meantime. Allowed only for multiplierUpdater
+     * @dev Function to change the contract multiplier, only if oldMultiplier did not change in the meantime.
+     * It expects an activation time for the new multiplier, which needs to take place before start of the next fee period,
+     * but can be set in the past to activate immediately. It follows similar approach as SPL Token2022 Scaled UI Extension.
+     * 
+     * Allowed only for multiplierUpdater
      *
      * Emits a { MultiplierChanged } event
      *
