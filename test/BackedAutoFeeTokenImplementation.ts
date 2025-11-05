@@ -223,7 +223,6 @@ describe("BackedAutoFeeTokenImplementation", function () {
         // (because we use the same implementation for both v2 and v3)
         // In a real upgrade, v2 wouldn't have newMultiplier field, so initialize_v3 would succeed
         expect(await tokenV2Upgraded.newMultiplier()).to.be.equal(ethers.BigNumber.from(10).pow(18));
-        expect(await tokenV2Upgraded.newMultiplierNonce()).to.be.equal(0);
         expect(await tokenV2Upgraded.newMultiplierActivationTime()).to.be.equal(0);
       });
     });
@@ -233,11 +232,9 @@ describe("BackedAutoFeeTokenImplementation", function () {
     describe('when time moved by 365 days forward', () => {
       const periodsPassed = 365;
       let preMultiplier: BigNumber;
-      let preMultiplierNonce: BigNumber;
       describe('and fee is set to non-zero value', () => {
         cacheBeforeEach(async () => {
           preMultiplier = await token.multiplier();
-          preMultiplierNonce = await token.multiplierNonce();
           await helpers.time.setNextBlockTimestamp(baseTime + periodsPassed * accrualPeriodLength);
           await helpers.mine()
         })
@@ -245,7 +242,6 @@ describe("BackedAutoFeeTokenImplementation", function () {
         it('should change current multiplier', async () => {
           const currentMultiplier = await token.getCurrentMultiplier();
           expect(currentMultiplier.currentMultiplier).to.be.not.equal(preMultiplier)
-          expect(currentMultiplier.currentMultiplierNonce).to.be.not.equal(preMultiplierNonce)
         })
         it('should not update stored multiplier', async () => {
           expect(await token.multiplier()).to.be.equal(preMultiplier)
@@ -255,17 +251,12 @@ describe("BackedAutoFeeTokenImplementation", function () {
         cacheBeforeEach(async () => {
           await token.updateFeePerPeriod('0');
           preMultiplier = await token.multiplier();
-          preMultiplierNonce = await token.multiplierNonce();
           await helpers.time.setNextBlockTimestamp(baseTime + periodsPassed * accrualPeriodLength);
           await helpers.mine()
         })
 
         it('should not change current multiplier', async () => {
           expect((await token.getCurrentMultiplier()).currentMultiplier).to.be.equal(preMultiplier)
-        })
-
-        it('should not change current multiplier nonce', async () => {
-          expect((await token.getCurrentMultiplier()).currentMultiplierNonce).to.be.equal(preMultiplierNonce)
         })
       })
     })
@@ -399,12 +390,11 @@ describe("BackedAutoFeeTokenImplementation", function () {
       })
 
       describe('#updateMultiplierValue', () => {
-        it('Should update stored multiplier value and nonce', async () => {
-          const { currentMultiplier, currentMultiplierNonce } = await token.getCurrentMultiplier();
+        it('Should update stored multiplier value', async () => {
+          const { currentMultiplier } = await token.getCurrentMultiplier();
           const newMultiplierValue = currentMultiplier.div(2);
           await token.updateMultiplierValue(newMultiplierValue, currentMultiplier, 0)
           expect(await token.multiplier()).to.be.equal(newMultiplierValue);
-          expect(await token.multiplierNonce()).to.be.equal(currentMultiplierNonce.add(1));
           expect(await token.lastTimeFeeApplied()).to.be.equal(baseTime + periodsPassed * accrualPeriodLength);
         });
         it('Should reject update, if wrong past value was passed', async () => {
@@ -413,94 +403,6 @@ describe("BackedAutoFeeTokenImplementation", function () {
         it('Should reject update, if wrong account is used', async () => {
           const { currentMultiplier } = await token.getCurrentMultiplier();
           await expect(token.connect(actor.signer).updateMultiplierValue(1, currentMultiplier, 0)).to.be.reverted
-        });
-      });
-
-      describe('#updateMultiplierWithNonce', () => {
-        it('Should update stored multiplier value and nonce', async () => {
-          const { currentMultiplier, currentMultiplierNonce } = await token.getCurrentMultiplier();
-          const newMultiplierValue = currentMultiplier.div(2);
-          const newMultiplierNonce = currentMultiplierNonce.add(100);
-          await token.updateMultiplierWithNonce(newMultiplierValue, currentMultiplier, newMultiplierNonce, 0)
-          expect(await token.multiplier()).to.be.equal(newMultiplierValue);
-          expect(await token.multiplierNonce()).to.be.equal(newMultiplierNonce);
-          expect(await token.lastTimeFeeApplied()).to.be.equal(baseTime + periodsPassed * accrualPeriodLength);
-        });
-        it('Should reject update, if wrong past value was passed', async () => {
-          await expect(token.updateMultiplierWithNonce(0, 1, 1, 0)).to.be.reverted;
-        });
-        it('Should reject update, if wrong account is used', async () => {
-          const { currentMultiplier, currentMultiplierNonce } = await token.getCurrentMultiplier();
-          await expect(token.connect(actor.signer).updateMultiplierWithNonce(1, currentMultiplier, currentMultiplierNonce.add(1), 0)).to.be.reverted
-        });
-        it('Should reject update, if wrong nonce is used', async () => {
-          const { currentMultiplier, currentMultiplierNonce } = await token.getCurrentMultiplier();
-          await expect(token.connect(actor.signer).updateMultiplierWithNonce(1, currentMultiplier, currentMultiplierNonce, 0)).to.be.reverted
-        });
-
-        describe('With delayed activation', () => {
-          const futureTime = baseTime + (periodsPassed + 1) * accrualPeriodLength - 60; // 60 seconds before the end of the current period
-
-          it('Should store new multiplier with future activation time', async () => {
-            const { currentMultiplier, currentMultiplierNonce } = await token.getCurrentMultiplier();
-            const newMultiplierValue = currentMultiplier.div(2);
-            const newMultiplierNonce = currentMultiplierNonce.add(100);
-
-            await token.updateMultiplierWithNonce(newMultiplierValue, currentMultiplier, newMultiplierNonce, futureTime);
-
-            // Current multiplier should not change yet
-            expect(await token.multiplier()).to.be.equal(currentMultiplier);
-            expect(await token.multiplierNonce()).to.be.equal(currentMultiplierNonce);
-            // New multiplier should be stored
-            expect(await token.newMultiplier()).to.be.equal(newMultiplierValue);
-            expect(await token.newMultiplierNonce()).to.be.equal(newMultiplierNonce);
-            expect(await token.newMultiplierActivationTime()).to.be.equal(futureTime);
-          });
-
-          it('Should activate delayed multiplier when time reaches activation', async () => {
-            const { currentMultiplier, currentMultiplierNonce } = await token.getCurrentMultiplier();
-            const newMultiplierValue = currentMultiplier.div(2);
-            const newMultiplierNonce = currentMultiplierNonce.add(100);
-
-            await token.updateMultiplierWithNonce(newMultiplierValue, currentMultiplier, newMultiplierNonce, futureTime);
-
-            // Move time to exact activation moment
-            await helpers.time.setNextBlockTimestamp(futureTime);
-            await helpers.mine();
-
-            // Check view function at exact activation time - no fees applied yet
-            // since we're checking at the precise moment of activation
-            expect(await token.multiplier()).to.be.equal(newMultiplierValue);
-            expect(await token.multiplierNonce()).to.be.equal(newMultiplierNonce);
-          });
-
-          it('Should apply fees from activation time when delayed multiplier activates', async () => {
-            const { currentMultiplier, currentMultiplierNonce } = await token.getCurrentMultiplier();
-            const newMultiplierValue = currentMultiplier.mul(110).div(100); // 10% increase
-            const newMultiplierNonce = currentMultiplierNonce.add(100);
-
-            await token.updateMultiplierWithNonce(newMultiplierValue, currentMultiplier, newMultiplierNonce, futureTime);
-
-            // Move time past activation (7 days)
-            await helpers.time.setNextBlockTimestamp(futureTime + accrualPeriodLength * 7);
-
-            // Trigger multiplier update via transaction
-            // This persists the multiplier to storage and applies fees from activation time
-            await token.transfer(actor.address, 1);
-
-            // Calculate expected multiplier with 7 days of fees applied from activation time
-            // Unlike the previous test, this checks stored state after a triggered update,
-            // so fees ARE applied for the time period from activation to now
-            const feePerPeriod = await token.feePerPeriod();
-            const periodsPassed = 7;
-            let expectedMult = newMultiplierValue;
-            for (let i = 0; i < periodsPassed; i++) {
-              expectedMult = expectedMult.mul(ethers.BigNumber.from(10).pow(18).sub(feePerPeriod)).div(ethers.BigNumber.from(10).pow(18));
-            }
-
-            expect(await token.lastMultiplier()).to.be.equal(expectedMult);
-            expect(await token.newMultiplierActivationTime()).to.be.equal(0);
-          });
         });
       });
 
