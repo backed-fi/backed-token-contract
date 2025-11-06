@@ -72,12 +72,6 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
      *
      */
     uint256 public lastMultiplier;
-    function multiplier() external view returns (uint256) {
-        if(block.timestamp >= newMultiplierActivationTime) {
-            return newMultiplier;
-        }
-        return lastMultiplier;
-    }
 
     mapping(address => uint256) private _shares;
 
@@ -120,6 +114,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         (uint256 currentMultiplier, uint256 periodsPassed) = getCurrentMultiplier();
         lastTimeFeeApplied = lastTimeFeeApplied + periodLength * periodsPassed;
         if (lastMultiplier != currentMultiplier) {
+            // If multiplier changed, we know that activation already took place or wasn't scheduled
             _updateMultiplier(currentMultiplier, 0);
         }
         _;
@@ -218,6 +213,17 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     }
 
     /**
+     * @dev Retrieves currently active multiplier before fee application
+     *
+     */
+    function multiplier() external view returns (uint256) {
+        if(block.timestamp >= newMultiplierActivationTime) {
+            return newMultiplier;
+        }
+        return lastMultiplier;
+    }
+
+    /**
      * @dev Retrieves most up to date value of multiplier
      *
      */
@@ -227,11 +233,17 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         virtual
         returns (uint256 currentMultiplier, uint256 periodsPassed)
     {
+        // If new multiplier activation time is still in the future, return lastMultiplier
+        // As it's scheduled before next fee accrual period
         if(block.timestamp < newMultiplierActivationTime) {
             return (lastMultiplier, 0);
         }
+
         periodsPassed = (block.timestamp - lastTimeFeeApplied) / periodLength;
+
+        // If already past activation time of new multiplier, it's value is the most up to date one
         currentMultiplier = newMultiplier;
+
         if (feePerPeriod > 0) {
             for (uint256 index = 0; index < periodsPassed; index++) {
                 currentMultiplier = (currentMultiplier * (1e18 - feePerPeriod)) / 1e18;
@@ -578,16 +590,20 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
      */
     function _updateMultiplier(uint256 pendingNewMultiplier, uint256 pendingNewMultiplierActivationTime) internal virtual {
         require(pendingNewMultiplier != 0, "BackedToken: Multiplier cannot be zero");
+        require(pendingNewMultiplier != pendingNewMultiplier, "BackedToken: Multiplier did not update");
         require(pendingNewMultiplierActivationTime < lastTimeFeeApplied + periodLength, "BackedToken: Activation time needs to be before next period");
 
         newMultiplier = pendingNewMultiplier;
 
+        // If activation time is in the future, schedule it
         if(pendingNewMultiplierActivationTime > block.timestamp) {
             newMultiplierActivationTime = pendingNewMultiplierActivationTime;
             // We don't need to update lastMultiplier here, as it will be updated in updateMultiplier modifier when calling updateMultiplier method
         } else {
+            // If activation time is in the past or now, activate immediately
             newMultiplierActivationTime = 0;
             lastMultiplier = pendingNewMultiplier;
+
             emit MultiplierUpdated(pendingNewMultiplier);
         }
     }
