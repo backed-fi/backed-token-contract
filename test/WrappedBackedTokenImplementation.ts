@@ -157,8 +157,7 @@ describe("WrappedBackedTokenImplementation", function () {
         const previousMultiplier = await token.multiplier();
         await token.updateMultiplierValue(
           previousMultiplier.mul(100 + multiplierIncreasePercentage).div(100),
-          previousMultiplier,
-          0
+          previousMultiplier
         )
       })
 
