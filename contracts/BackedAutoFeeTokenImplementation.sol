@@ -71,14 +71,29 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
      * Defined in 1e18 precision.
      *
      */
-    uint256 public multiplier;
+    uint256 public lastMultiplier;
+    function multiplier() external view returns (uint256) {
+        if(block.timestamp >= newMultiplierActivationTime) {
+            return newMultiplier;
+        }
+        return lastMultiplier;
+    }
 
     mapping(address => uint256) private _shares;
 
     uint256 internal _totalShares;
 
-    uint256 public multiplierNonce;
+    uint256 public lastMultiplierNonce;
+    uint256 public newMultiplierNonce;
+    uint256 public newMultiplier;
+    uint256 public newMultiplierActivationTime;
 
+    function multiplierNonce() external view returns (uint256) {
+        if(block.timestamp >= newMultiplierActivationTime) {
+            return newMultiplierNonce;
+        }
+        return lastMultiplierNonce;
+    }
     // Events:
 
     /**
@@ -106,10 +121,10 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     // Modifiers:
 
     modifier updateMultiplier() {
-        (uint256 newMultiplier, uint256 periodsPassed, uint256 newMultiplierNonce) = getCurrentMultiplier();
+        (uint256 currentMultiplier, uint256 periodsPassed, uint256 currentMultiplierNonce) = getCurrentMultiplier();
         lastTimeFeeApplied = lastTimeFeeApplied + periodLength * periodsPassed;
-        if (multiplier != newMultiplier) {
-            _updateMultiplier(newMultiplier, newMultiplierNonce);
+        if (lastMultiplier != currentMultiplier) {
+            _updateMultiplier(currentMultiplier, currentMultiplierNonce, 0);
         }
         _;
     }
@@ -123,16 +138,18 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     }
 
     modifier onlyUpdatedMultiplier(uint256 oldMultiplier) {
+        (uint256 currentMultiplier,,) = getCurrentMultiplier();
         require(
-            multiplier == oldMultiplier,
+            currentMultiplier == oldMultiplier,
             "BackedToken: Multiplier changed in the meantime"
         );
         _;
     }
 
     modifier onlyNewerMultiplierNonce(uint256 newMultiplierNonce) {
+        (,,uint256 currentMultiplierNonce) = getCurrentMultiplier();
         require(
-            multiplierNonce < newMultiplierNonce,
+            currentMultiplierNonce < newMultiplierNonce,
             "BackedToken: Multiplier nonce is outdated."
         );
         _;
@@ -172,6 +189,14 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         _initialize_auto_fee(_periodLength, _lastTimeFeeApplied, _feePerPeriod);
     }
 
+    function initialize_v3(
+    ) external virtual {
+        require(newMultiplier == 0, "BackedAutoFeeTokenImplementation v3 already initialized");
+        newMultiplier = lastMultiplier;
+        newMultiplierNonce = lastMultiplierNonce;
+        newMultiplierActivationTime = 0;
+    }
+
     function _initialize_auto_fee(
         uint256 _periodLength,
         uint256 _lastTimeFeeApplied,
@@ -180,8 +205,11 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         require(lastTimeFeeApplied == 0, "BackedAutoFeeTokenImplementation already initialized");
         require(_lastTimeFeeApplied != 0, "Invalid last time fee applied");
 
-        multiplier = 1e18;
-        multiplierNonce = 0;
+        lastMultiplier = 1e18;
+        lastMultiplierNonce = 0;
+        newMultiplier = 1e18;
+        newMultiplierNonce = 0;
+        newMultiplierActivationTime = 0;
         periodLength = _periodLength;
         lastTimeFeeApplied = _lastTimeFeeApplied;
         feePerPeriod = _feePerPeriod;
@@ -191,8 +219,8 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
      * @dev See {IERC20-totalSupply}.
      */
     function totalSupply() public view virtual override returns (uint256) {
-        (uint256 newMultiplier, ,) = getCurrentMultiplier();
-        return _getUnderlyingAmountByShares(_totalShares, newMultiplier);
+        (uint256 currentMultiplier, ,) = getCurrentMultiplier();
+        return _getUnderlyingAmountByShares(_totalShares, currentMultiplier);
     }
 
     /**
@@ -201,8 +229,8 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     function balanceOf(
         address account
     ) public view virtual override returns (uint256) {
-        (uint256 newMultiplier, ,) = getCurrentMultiplier();
-        return _getUnderlyingAmountByShares(sharesOf(account), newMultiplier);
+        (uint256 currentMultiplier, ,) = getCurrentMultiplier();
+        return _getUnderlyingAmountByShares(sharesOf(account), currentMultiplier);
     }
 
     /**
@@ -213,16 +241,19 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         public
         view
         virtual
-        returns (uint256 newMultiplier, uint256 periodsPassed, uint256 newMultiplierNonce)
+        returns (uint256 currentMultiplier, uint256 periodsPassed, uint256 currentMultiplierNonce)
     {
+        if(block.timestamp < newMultiplierActivationTime) {
+            return (lastMultiplier, 0, lastMultiplierNonce);
+        }
         periodsPassed = (block.timestamp - lastTimeFeeApplied) / periodLength;
-        newMultiplier = multiplier;
-        newMultiplierNonce = multiplierNonce;
+        currentMultiplier = newMultiplier;
+        currentMultiplierNonce = newMultiplierNonce;
         if (feePerPeriod > 0) {
             for (uint256 index = 0; index < periodsPassed; index++) {
-                newMultiplier = (newMultiplier * (1e18 - feePerPeriod)) / 1e18;
+                currentMultiplier = (currentMultiplier * (1e18 - feePerPeriod)) / 1e18;
             }
-            newMultiplierNonce += periodsPassed;
+            currentMultiplierNonce += periodsPassed;
         }
     }
 
@@ -239,8 +270,8 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     function getSharesByUnderlyingAmount(
         uint256 _underlyingAmount
     ) external view returns (uint256) {
-        (uint256 newMultiplier, ,) = getCurrentMultiplier();
-        return _getSharesByUnderlyingAmount(_underlyingAmount, newMultiplier);
+        (uint256 currentMultiplier, ,) = getCurrentMultiplier();
+        return _getSharesByUnderlyingAmount(_underlyingAmount, currentMultiplier);
     }
 
     /**
@@ -249,8 +280,8 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     function getUnderlyingAmountByShares(
         uint256 _sharesAmount
     ) external view returns (uint256) {
-        (uint256 newMultiplier, ,) = getCurrentMultiplier();
-        return _getUnderlyingAmountByShares(_sharesAmount, newMultiplier);
+        (uint256 currentMultiplier, ,) = getCurrentMultiplier();
+        return _getUnderlyingAmountByShares(_sharesAmount, currentMultiplier);
     }
 
     /**
@@ -279,8 +310,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         );
         _checkOwner(owner, structHash, v, r, s);
 
-        uint256 amount = _getUnderlyingAmountByShares(value, multiplier);
-        _transfer(owner, to, amount);
+        _transferShares(owner, to, value);
     }
 
     /**
@@ -296,8 +326,29 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         uint256 sharesAmount
     ) external virtual updateMultiplier returns (bool) {
         address owner = _msgSender();
-        uint256 amount = _getUnderlyingAmountByShares(sharesAmount, multiplier);
-        _transfer(owner, to, amount);
+        _transferShares(owner, to, sharesAmount);
+
+        return true;
+    }
+
+    /**
+     * @dev Transfers underlying shares from source account to destination account
+     *
+     * Requirements:
+     *
+     * - `from` cannot be the zero address and caller needs to have permission to use it's allowance.
+     * - `to` cannot be the zero address.
+     * - the caller must have a balance of at least `sharesAmount`.
+     */
+    function transferSharesFrom(
+        address from,
+        address to,
+        uint256 sharesAmount
+    ) external virtual updateMultiplier returns (bool) {
+        uint256 amount = _getUnderlyingAmountByShares(sharesAmount, lastMultiplier);
+        address spender = _msgSender();
+        _spendAllowance(from, spender, amount);
+        _transferShares(from, to, sharesAmount, amount);
         return true;
     }
 
@@ -309,6 +360,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     function updateFeePerPeriod(
         uint256 newFeePerPeriod
     ) external onlyOwner updateMultiplier {
+        require(newMultiplierActivationTime == 0, "Multiplier activation in progress");
         feePerPeriod = newFeePerPeriod;
     }
 
@@ -334,6 +386,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     function setLastTimeFeeApplied(
         uint256 newLastTimeFeeApplied
     ) external onlyOwner updateMultiplier {
+        require(newMultiplierActivationTime == 0, "Multiplier activation in progress");
         require(newLastTimeFeeApplied != 0, "Invalid last time fee applied");
         lastTimeFeeApplied = newLastTimeFeeApplied;
     }
@@ -344,6 +397,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
      * @param newPeriodLength Length of a single accrual period in seconds
      */
     function setPeriodLength(uint256 newPeriodLength) external onlyOwner updateMultiplier {
+        require(newMultiplierActivationTime == 0, "Multiplier activation in progress");
         periodLength = newPeriodLength;
     }
 
@@ -352,13 +406,16 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
      *
      * Emits a { MultiplierChanged } event
      *
-     * @param newMultiplier New multiplier value
+     * @param pendingNewMultiplier New multiplier value
+     * @param oldMultiplier Old multiplier value
+     * @param pendingNewMultiplierActivationTime Time when new multiplier becomes active, which needs to take place before start of the next period
      */
     function updateMultiplierValue(
-        uint256 newMultiplier,
-        uint256 oldMultiplier
+        uint256 pendingNewMultiplier,
+        uint256 oldMultiplier,
+        uint256 pendingNewMultiplierActivationTime
     ) public onlyMultiplierUpdater updateMultiplier onlyUpdatedMultiplier(oldMultiplier) {
-        _updateMultiplier(newMultiplier, multiplierNonce + 1);
+        _updateMultiplier(pendingNewMultiplier, lastMultiplierNonce + 1, pendingNewMultiplierActivationTime);
     }
 
     /**
@@ -372,9 +429,10 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     function updateMultiplierWithNonce(
         uint256 newMultiplier,
         uint256 oldMultiplier,
-        uint256 newMultiplierNonce
+        uint256 newMultiplierNonce,
+        uint256 pendingNewMultiplierActivationTime
     ) external onlyMultiplierUpdater updateMultiplier onlyUpdatedMultiplier(oldMultiplier) onlyNewerMultiplierNonce(newMultiplierNonce){
-        _updateMultiplier(newMultiplier, newMultiplierNonce);
+        _updateMultiplier(newMultiplier, newMultiplierNonce, pendingNewMultiplierActivationTime);
     }
 
     /**
@@ -402,10 +460,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
      *
      * This internal function is equivalent to {transfer}, and can be used to
      * e.g. implement automatic token fees, slashing mechanisms, etc.
-     *
-     * Emits a {Transfer} event.
-     * Emits a {TransferShares} event.
-     *
+     * 
      * Requirements:
      *
      * - `from` cannot be the zero address.
@@ -417,30 +472,74 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         address to,
         uint256 amount
     ) internal virtual override {
-        require(from != address(0), "ERC20: transfer from the zero address");
-        require(to != address(0), "ERC20: transfer to the zero address");
-
-        _beforeTokenTransfer(from, to, amount);
+        (uint256 multiplier, ,) = getCurrentMultiplier();
         uint256 _sharesAmount = _getSharesByUnderlyingAmount(
             amount,
             multiplier
         );
+        _transferShares(from, to, _sharesAmount, amount);
+    }
+
+    /**
+     * @dev Moves `shares amount` of tokens from `sender` to `recipient`.
+     *
+     * Requirements:
+     *
+     * - `from` cannot be the zero address.
+     * - `to` cannot be the zero address.
+     * - `from` must have a balance of at least `sharesAmount`.
+     */
+    function _transferShares(
+        address from,
+        address to,
+        uint256 sharesAmount
+    ) internal virtual {
+        (uint256 multiplier, ,) = getCurrentMultiplier();
+         uint256 amount = _getUnderlyingAmountByShares(
+            sharesAmount,
+            multiplier
+        );
+        _transferShares(from, to, sharesAmount, amount);
+    }
+    
+    /**
+     * @dev Moves `shares amount` of tokens from `sender` to `recipient`.
+     *
+     * Emits a {Transfer} event.
+     * Emits a {TransferShares} event.
+     *
+     * Requirements:
+     *
+     * - `from` cannot be the zero address.
+     * - `to` cannot be the zero address.
+     * - `from` must have a balance of at least `sharesAmount`.
+     */
+    function _transferShares(
+        address from,
+        address to,
+        uint256 sharesAmount,
+        uint256 tokenAmount
+    ) internal virtual {
+        require(from != address(0), "ERC20: transfer from the zero address");
+        require(to != address(0), "ERC20: transfer to the zero address");
+
+        _beforeTokenTransfer(from, to, tokenAmount);
 
         uint256 currentSenderShares = _shares[from];
         require(
-            currentSenderShares >= _sharesAmount,
+            currentSenderShares >= sharesAmount,
             "ERC20: transfer amount exceeds balance"
         );
 
         unchecked {
-            _shares[from] = currentSenderShares - (_sharesAmount);
+            _shares[from] = currentSenderShares - (sharesAmount);
         }
-        _shares[to] = _shares[to] + (_sharesAmount);
+        _shares[to] = _shares[to] + (sharesAmount);
 
-        emit Transfer(from, to, amount);
-        emit TransferShares(from, to, _sharesAmount);
+        emit Transfer(from, to, tokenAmount);
+        emit TransferShares(from, to, sharesAmount);
 
-        _afterTokenTransfer(from, to, amount);
+        _afterTokenTransfer(from, to, tokenAmount);
     }
 
     /** @dev Creates `amount` tokens and assigns them to `account`, increasing
@@ -457,6 +556,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         require(account != address(0), "ERC20: mint to the zero address");
 
         _beforeTokenTransfer(address(0), account, amount);
+        (uint256 multiplier, ,) = getCurrentMultiplier();
         uint256 sharesAmount = _getSharesByUnderlyingAmount(amount, multiplier);
 
         _totalShares += sharesAmount;
@@ -483,6 +583,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         require(account != address(0), "ERC20: burn from the zero address");
 
         _beforeTokenTransfer(account, address(0), amount);
+        (uint256 multiplier, ,) = getCurrentMultiplier();
         uint256 sharesAmount = _getSharesByUnderlyingAmount(amount, multiplier);
 
         uint256 accountBalance = _shares[account];
@@ -506,10 +607,22 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
      *
      * Emit an {MultiplierUpdated} event.
      */
-    function _updateMultiplier(uint256 newMultiplier, uint256 newMultiplierNonce) internal virtual {
-        multiplier = newMultiplier;
-        multiplierNonce = newMultiplierNonce;
-        emit MultiplierUpdated(newMultiplier);
+    function _updateMultiplier(uint256 pendingNewMultiplier, uint256 pendingNewMultiplierNonce, uint256 pendingNewMultiplierActivationTime) internal virtual {
+        require(pendingNewMultiplier != 0, "BackedToken: Multiplier cannot be zero");
+        require(pendingNewMultiplierActivationTime < lastTimeFeeApplied + periodLength, "BackedToken: Activation time needs to be before next period");
+
+        newMultiplier = pendingNewMultiplier;
+        newMultiplierNonce = pendingNewMultiplierNonce;
+
+        if(pendingNewMultiplierActivationTime > block.timestamp) {
+            newMultiplierActivationTime = pendingNewMultiplierActivationTime;
+            // We don't need to update lastMultiplier and lastMultiplierNonce here, as they will be updated in updateMultiplier modifier when calling updateMultiplier method
+        } else {
+            newMultiplierActivationTime = 0;
+            lastMultiplier = pendingNewMultiplier;
+            lastMultiplierNonce = pendingNewMultiplierNonce;
+            emit MultiplierUpdated(pendingNewMultiplier);
+        }
     }
 
     // Implement the update multiplier functionality before transfer:
