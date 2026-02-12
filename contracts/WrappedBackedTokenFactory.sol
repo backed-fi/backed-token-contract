@@ -98,12 +98,16 @@ contract WrappedBackedTokenFactory is Ownable {
         );
 
         bytes32 salt = keccak256(
-            abi.encodePacked(configuration.name, configuration.symbol)
+            abi.encodePacked(configuration.name, configuration.symbol, configuration.underlying)
         );
 
         WrappedBackedTokenProxy newProxy = new WrappedBackedTokenProxy{salt: salt}(
+            address(0),
+            address(this),
+            ""
+        );
+        newProxy.upgradeToAndCall(
             address(wrappedTokenImplementation),
-            address(proxyAdmin),
             abi.encodeWithSelector(
                 bytes4(
                     keccak256(
@@ -115,6 +119,7 @@ contract WrappedBackedTokenFactory is Ownable {
                 configuration.underlying
             )
         );
+        newProxy.changeAdmin(address(proxyAdmin));
 
         WrappedBackedTokenImplementation newToken = WrappedBackedTokenImplementation(
                 address(newProxy)
