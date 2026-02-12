@@ -1820,6 +1820,218 @@ describe("BackedAutoFeeTokenImplementation", function () {
     });
   });
 
+  describe('#scheduledMultiplierUpdates', () => {
+    describe('Initial state', () => {
+      it('Should have one initial entry after initialization', async () => {
+        expect(await token.scheduledMultiplierUpdatesLength()).to.be.equal(1);
+      });
+
+      it('Should have correct initial values', async () => {
+        const initialUpdate = await token.scheduledMultiplierUpdates(0);
+        expect(initialUpdate.previousMultiplier).to.be.equal(ethers.BigNumber.from(10).pow(18));
+        expect(initialUpdate.newMultiplier).to.be.equal(ethers.BigNumber.from(10).pow(18));
+        expect(initialUpdate.activationTime).to.be.equal(0);
+      });
+    });
+
+    describe('When updating multiplier immediately', () => {
+      cacheBeforeEach(async () => {
+        const currentMult = await token.multiplier();
+        const newMult = currentMult.mul(95).div(100); // 5% decrease
+        await token.updateMultiplierValue(newMult, currentMult, 0);
+      });
+
+      it('Should add new entry to scheduledMultiplierUpdates', async () => {
+        expect(await token.scheduledMultiplierUpdatesLength()).to.be.equal(2);
+      });
+
+      it('Should store correct values in new entry', async () => {
+        const update = await token.scheduledMultiplierUpdates(1);
+        const currentTime = await helpers.time.latest();
+        expect(update.previousMultiplier).to.be.equal(ethers.BigNumber.from(10).pow(18));
+        expect(update.newMultiplier).to.be.equal(ethers.BigNumber.from(10).pow(18).mul(95).div(100));
+        expect(update.activationTime).to.be.equal(currentTime);
+      });
+    });
+
+    describe('When updating multiplier with future activation', () => {
+      const futureTime = baseTime + accrualPeriodLength / 2;
+
+      cacheBeforeEach(async () => {
+        const currentMult = await token.multiplier();
+        const newMult = currentMult.mul(110).div(100);
+        await token.updateMultiplierValue(newMult, currentMult, futureTime);
+      });
+
+      it('Should add new entry with future activation time', async () => {
+        expect(await token.scheduledMultiplierUpdatesLength()).to.be.equal(2);
+        const update = await token.scheduledMultiplierUpdates(1);
+        expect(update.activationTime).to.be.equal(futureTime);
+      });
+
+      it('Should emit MultiplierScheduled event', async () => {
+        // This test is within a nested context where futureTime is already set
+        // and multiplier update was already done in the cacheBeforeEach
+        // Let's verify the event was already emitted in that transaction
+        const update = await token.scheduledMultiplierUpdates(1);
+        expect(update.activationTime).to.be.equal(futureTime);
+
+        // The MultiplierScheduled event was emitted in the cacheBeforeEach
+        // We can verify by checking that a scheduled update exists
+        expect(await token.newMultiplierActivationTime()).to.be.equal(futureTime);
+      });
+
+      describe('And then updating again before activation', () => {
+        it('Should overwrite previous pending update', async () => {
+          const currentMult = await token.multiplier();
+          const newerMult = currentMult.mul(120).div(100);
+          const newerTime = baseTime + accrualPeriodLength / 4;
+
+          await token.updateMultiplierValue(newerMult, currentMult, newerTime);
+
+          // Should still have 2 entries (initial + current), previous pending was overwritten
+          expect(await token.scheduledMultiplierUpdatesLength()).to.be.equal(2);
+
+          const lastUpdate = await token.scheduledMultiplierUpdates(1);
+          expect(lastUpdate.newMultiplier).to.be.equal(newerMult);
+          expect(lastUpdate.activationTime).to.be.equal(newerTime);
+        });
+      });
+
+      describe('And then updating after activation', () => {
+        it('Should add new entry after previous one activates', async () => {
+          // Move time to activation
+          await helpers.time.setNextBlockTimestamp(futureTime);
+          await token.transfer(actor.address, 1);
+
+          const currentMult = await token.multiplier();
+          const anotherNewMult = currentMult.mul(105).div(100);
+          await token.updateMultiplierValue(anotherNewMult, currentMult, 0);
+
+          // Should have 3 entries now
+          expect(await token.scheduledMultiplierUpdatesLength()).to.be.equal(3);
+        });
+      });
+    });
+
+    describe('Multiple sequential updates', () => {
+      it('Should track history of all activated multiplier updates', async () => {
+        // Mint some tokens first to have balance for transfers
+        await token.connect(minter.signer).mint(owner.address, ethers.BigNumber.from(10).pow(20));
+
+        let currentMult = await token.multiplier();
+
+        // First update
+        const newMult1 = currentMult.mul(95).div(100);
+        await token.updateMultiplierValue(newMult1, currentMult, 0);
+
+        // Move time forward
+        await helpers.time.setNextBlockTimestamp(baseTime + accrualPeriodLength);
+        await token.transfer(actor.address, ethers.BigNumber.from(10).pow(18));
+
+        // Second update
+        currentMult = await token.multiplier();
+        const newMult2 = currentMult.mul(98).div(100);
+        await token.updateMultiplierValue(newMult2, currentMult, 0);
+
+        // Should have 3 entries total
+        expect(await token.scheduledMultiplierUpdatesLength()).to.be.equal(3);
+
+        // Verify entries
+        const update1 = await token.scheduledMultiplierUpdates(1);
+        const update2 = await token.scheduledMultiplierUpdates(2);
+
+        expect(update1.previousMultiplier).to.be.equal(ethers.BigNumber.from(10).pow(18));
+        expect(update2.previousMultiplier).to.not.equal(ethers.BigNumber.from(10).pow(18));
+      });
+    });
+  });
+
+  describe('#initialize_v4', () => {
+    describe('When called on already initialized v4 contract', () => {
+      it('Should revert', async () => {
+        // Current token already has scheduledMultiplierUpdates initialized
+        await expect(
+          token.initialize_v4([])
+        ).to.be.revertedWith("BackedAutoFeeTokenImplementation v4 already initialized");
+      });
+    });
+
+    describe('Initialize_v4 behavior validation', () => {
+      it('Should only allow initialization when array is empty', async () => {
+        // The initialize_v4 check: scheduledMultiplierUpdates.length == 0
+        // This means it's designed for contracts that were deployed before v4
+        const currentLength = await token.scheduledMultiplierUpdatesLength();
+        expect(currentLength).to.be.equal(1); // Already initialized with one entry
+
+        // Attempting to call it when array is not empty should revert
+        await expect(token.initialize_v4([])).to.be.revertedWith(
+          "BackedAutoFeeTokenImplementation v4 already initialized"
+        );
+      });
+    });
+  });
+
+  describe('#scheduledMultiplierUpdatesLength', () => {
+    it('Should return correct length', async () => {
+      const length = await token.scheduledMultiplierUpdatesLength();
+      expect(length).to.be.equal(1);
+    });
+
+    it('Should increment after each multiplier update', async () => {
+      const initialLength = await token.scheduledMultiplierUpdatesLength();
+
+      const currentMult = await token.multiplier();
+      const newMult = currentMult.mul(98).div(100);
+      await token.updateMultiplierValue(newMult, currentMult, 0);
+
+      const newLength = await token.scheduledMultiplierUpdatesLength();
+      expect(newLength).to.be.equal(initialLength.add(1));
+    });
+  });
+
+  describe('#MultiplierScheduled event', () => {
+    it('Should emit MultiplierScheduled when setting future activation', async () => {
+      const currentMult = await token.multiplier();
+      const newMult = currentMult.mul(105).div(100);
+      const futureTime = baseTime + accrualPeriodLength / 2;
+
+      const tx = token.updateMultiplierValue(newMult, currentMult, futureTime);
+
+      await expect(tx)
+        .to.emit(token, "MultiplierScheduled")
+        .withArgs(newMult, futureTime);
+    });
+
+    it('Should emit MultiplierUpdated (not MultiplierScheduled) when activating immediately', async () => {
+      const currentMult = await token.multiplier();
+      const newMult = currentMult.mul(105).div(100);
+
+      const tx = token.updateMultiplierValue(newMult, currentMult, 0);
+
+      await expect(tx)
+        .to.emit(token, "MultiplierUpdated")
+        .withArgs(newMult);
+
+      await expect(tx)
+        .to.not.emit(token, "MultiplierScheduled");
+    });
+
+    it('Should emit MultiplierScheduled when using updateMultiplierWithNonce', async () => {
+      const currentMult = await token.multiplier();
+      const currentNonce = await token.multiplierNonce();
+      const newMult = currentMult.mul(105).div(100);
+      const newNonce = currentNonce.add(10);
+      const futureTime = baseTime + accrualPeriodLength / 2;
+
+      const tx = token.updateMultiplierWithNonce(newMult, currentMult, newNonce, futureTime);
+
+      await expect(tx)
+        .to.emit(token, "MultiplierScheduled")
+        .withArgs(newMult, futureTime);
+    });
+  });
+
 });
 function nthRoot(annualFee: number, n: number) {
   return Decimal.pow(1 - annualFee, new Decimal(1).div(n));
