@@ -13,12 +13,12 @@ pragma solidity 0.8.9;
  */
 interface IBackedAutoFeeToken {
     /**
-     * @dev Struct representing a scheduled multiplier update
+     * @dev Struct representing multiplier update
      * @param previousMultiplier The multiplier value before this update
      * @param newMultiplier The multiplier value after this update
      * @param activationTime The Unix timestamp when this update was/will be activated
      */
-    struct ScheduledMultiplierUpdates {
+    struct MultiplierUpdate {
         uint256 previousMultiplier;
         uint256 newMultiplier;
         uint256 activationTime;
@@ -139,20 +139,7 @@ interface IBackedAutoFeeToken {
      */
     function getCurrentMultiplier() external view returns (uint256 currentMultiplier, uint256 periodsPassed, uint256 currentMultiplierNonce);
 
-    // View functions - Token Balances and Shares
-
-    /**
-     * @dev Returns the total supply of tokens (shares * multiplier)
-     * @return The total token supply
-     */
-    function totalSupply() external view returns (uint256);
-
-    /**
-     * @dev Returns the token balance of an account (shares * multiplier)
-     * @param account The address to query
-     * @return The token balance of the account
-     */
-    function balanceOf(address account) external view returns (uint256);
+    // View functions - Token Shares
 
     /**
      * @dev Returns the share balance of an account
@@ -176,61 +163,19 @@ interface IBackedAutoFeeToken {
     function getUnderlyingAmountByShares(uint256 _sharesAmount) external view returns (uint256);
 
     /**
-     * @dev Returns the length of the scheduled multiplier updates array
-     * @return The number of scheduled multiplier updates stored
+     * @dev Returns the length of the multiplier updates array
+     * @return The number of multiplier updates stored
      */
-    function scheduledMultiplierUpdatesLength() external view returns (uint256);
+    function multiplierUpdatesLength() external view returns (uint256);
 
     /**
      * @dev Returns a specific scheduled multiplier update by index
-     * @param index The index in the scheduledMultiplierUpdates array
+     * @param index The index in the myyultiplierUpdates array
      * @return previousMultiplier The multiplier value before this update
      * @return newMultiplier The multiplier value after this update
      * @return activationTime The Unix timestamp when this update was/will be activated
      */
-    function scheduledMultiplierUpdates(uint256 index) external view returns (uint256 previousMultiplier, uint256 newMultiplier, uint256 activationTime);
-
-    // State-changing functions - Initialization
-
-    /**
-     * @dev Initializes the token with default fee settings (v1 initialization)
-     * @param name_ The token name
-     * @param symbol_ The token symbol
-     */
-    function initialize(string memory name_, string memory symbol_) external;
-
-    /**
-     * @dev Initializes the token with custom fee settings
-     * @param name_ The token name
-     * @param symbol_ The token symbol
-     * @param _periodLength The length of each fee period in seconds
-     * @param _lastTimeFeeApplied The initial timestamp for fee accrual
-     * @param _feePerPeriod The fee rate per period in 1e18 precision
-     */
-    function initialize(string memory name_, string memory symbol_, uint256 _periodLength, uint256 _lastTimeFeeApplied, uint256 _feePerPeriod) external;
-
-    /**
-     * @dev Initializes auto-fee functionality for tokens upgraded from v1 (v2 initialization)
-     * @param _periodLength The length of each fee period in seconds
-     * @param _lastTimeFeeApplied The initial timestamp for fee accrual
-     * @param _feePerPeriod The fee rate per period in 1e18 precision
-     */
-    function initialize_v2(uint256 _periodLength, uint256 _lastTimeFeeApplied, uint256 _feePerPeriod) external;
-
-    /**
-     * @dev Initializes v3 fields (newMultiplier, newMultiplierNonce, newMultiplierActivationTime)
-     * Should be called when upgrading from v2 to v3
-     */
-    function initialize_v3() external;
-
-    /**
-     * @dev Initializes v4 with historical multiplier updates (scheduledMultiplierUpdates array)
-     * Should be called when upgrading from v3 to v4 for tokens deployed before this feature
-     * Populates the array with an initial entry and any provided past updates
-     * Can only be called once (when scheduledMultiplierUpdates.length == 0)
-     * @param _pastMultipliersUpdates Array of historical multiplier updates to populate
-     */
-    function initialize_v4(ScheduledMultiplierUpdates[] calldata _pastMultipliersUpdates) external;
+    function multiplierUpdates(uint256 index) external view returns (uint256 previousMultiplier, uint256 newMultiplier, uint256 activationTime);
 
     // State-changing functions - Share Transfers
 

@@ -37,6 +37,7 @@
 pragma solidity 0.8.9;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "./interfaces/IBackedAutoFeeToken.sol";
 import "./BackedTokenImplementation.sol";
 
 /**
@@ -51,14 +52,8 @@ import "./BackedTokenImplementation.sol";
  *
  */
 
-contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
+contract BackedAutoFeeTokenImplementation is BackedTokenImplementation, IBackedAutoFeeToken {
     
-    struct ScheduledMultiplierUpdates {
-        uint256 previousMultiplier;
-        uint256 newMultiplier;
-        uint256 activationTime;
-    }
-
     // Calculating the Delegated Transfer Shares typehash:
     bytes32 constant public DELEGATED_TRANSFER_SHARES_TYPEHASH =
         keccak256(
@@ -94,7 +89,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     uint256 public newMultiplierNonce;
     uint256 public newMultiplier;
     uint256 public newMultiplierActivationTime;
-    ScheduledMultiplierUpdates[] public scheduledMultiplierUpdates;
+    MultiplierUpdate[] public multiplierUpdates;
 
     function multiplierNonce() external view returns (uint256) {
         if(block.timestamp >= newMultiplierActivationTime) {
@@ -102,33 +97,6 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         }
         return lastMultiplierNonce;
     }
-    // Events:
-
-    /**
-     * @dev Emitted when multiplier updater is changed
-     */
-    event NewMultiplierUpdater(address indexed newMultiplierUpdater);
-
-    /**
-     * @dev Emitted when `value` token shares are moved from one account (`from`) to
-     * another (`to`).
-     *
-     * Note that `value` may be zero.
-     */
-    event TransferShares(
-        address indexed from,
-        address indexed to,
-        uint256 value
-    );
-
-    /**
-     * @dev Emitted when multiplier value is updated
-     */
-    event MultiplierUpdated(uint256 value);
-    /**
-     * @dev Emitted when multiplier is scheduled for future activation
-     */
-    event MultiplierScheduled(uint256 newMultiplier, uint256 activationTime);
 
     // Modifiers:
 
@@ -210,16 +178,16 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     }
 
     function initialize_v4(
-        ScheduledMultiplierUpdates [] calldata _pastMultipliersUpdates
+        MultiplierUpdate [] calldata _pastMultipliersUpdates
     ) external virtual {
-        require(scheduledMultiplierUpdates.length == 0, "BackedAutoFeeTokenImplementation v4 already initialized");
-        scheduledMultiplierUpdates.push(ScheduledMultiplierUpdates({
+        require(multiplierUpdates.length == 0, "BackedAutoFeeTokenImplementation v4 already initialized");
+        multiplierUpdates.push(MultiplierUpdate({
             previousMultiplier: 1e18,
             newMultiplier: 1e18,
             activationTime: 0
         }));
         for (uint i = 0; i < _pastMultipliersUpdates.length; i++) {    
-            scheduledMultiplierUpdates.push(ScheduledMultiplierUpdates({
+            multiplierUpdates.push(MultiplierUpdate({
                 previousMultiplier: _pastMultipliersUpdates[i].previousMultiplier,
                 newMultiplier: _pastMultipliersUpdates[i].newMultiplier,
                 activationTime: _pastMultipliersUpdates[i].activationTime
@@ -243,7 +211,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         periodLength = _periodLength;
         lastTimeFeeApplied = _lastTimeFeeApplied;
         feePerPeriod = _feePerPeriod;
-        scheduledMultiplierUpdates.push(ScheduledMultiplierUpdates({
+        multiplierUpdates.push(MultiplierUpdate({
             previousMultiplier: 1e18,
             newMultiplier: 1e18,
             activationTime: 0
@@ -322,8 +290,8 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     /**
      * @return Length of scheduled multipliers updates array
      */
-    function scheduledMultiplierUpdatesLength() external view returns (uint256) {
-        return scheduledMultiplierUpdates.length;
+    function multiplierUpdatesLength() external view returns (uint256) {
+        return multiplierUpdates.length;
     }
 
     /**
@@ -488,11 +456,11 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         uint256 _multiplierActivationTime
     ) internal {
         // If previously scheduled multiplier update has activation time in the future, override it, as there can be only one scheduled multiplier update at a time and new one overrides previously scheduled one.
-        if(scheduledMultiplierUpdates[scheduledMultiplierUpdates.length - 1].activationTime > block.timestamp) {
-            scheduledMultiplierUpdates.pop();
+        if(multiplierUpdates[multiplierUpdates.length - 1].activationTime > block.timestamp) {
+            multiplierUpdates.pop();
         }
 
-        scheduledMultiplierUpdates.push(ScheduledMultiplierUpdates({
+        multiplierUpdates.push(MultiplierUpdate({
             previousMultiplier: _previousMultiplierValue,
             newMultiplier: _multiplierValue,
             activationTime: _multiplierActivationTime > block.timestamp ? _multiplierActivationTime : block.timestamp

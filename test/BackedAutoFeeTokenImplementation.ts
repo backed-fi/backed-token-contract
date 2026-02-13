@@ -1820,14 +1820,14 @@ describe("BackedAutoFeeTokenImplementation", function () {
     });
   });
 
-  describe('#scheduledMultiplierUpdates', () => {
+  describe('#multiplierUpdates', () => {
     describe('Initial state', () => {
       it('Should have one initial entry after initialization', async () => {
-        expect(await token.scheduledMultiplierUpdatesLength()).to.be.equal(1);
+        expect(await token.multiplierUpdatesLength()).to.be.equal(1);
       });
 
       it('Should have correct initial values', async () => {
-        const initialUpdate = await token.scheduledMultiplierUpdates(0);
+        const initialUpdate = await token.multiplierUpdates(0);
         expect(initialUpdate.previousMultiplier).to.be.equal(ethers.BigNumber.from(10).pow(18));
         expect(initialUpdate.newMultiplier).to.be.equal(ethers.BigNumber.from(10).pow(18));
         expect(initialUpdate.activationTime).to.be.equal(0);
@@ -1841,12 +1841,12 @@ describe("BackedAutoFeeTokenImplementation", function () {
         await token.updateMultiplierValue(newMult, currentMult, 0);
       });
 
-      it('Should add new entry to scheduledMultiplierUpdates', async () => {
-        expect(await token.scheduledMultiplierUpdatesLength()).to.be.equal(2);
+      it('Should add new entry to multiplierUpdates', async () => {
+        expect(await token.multiplierUpdatesLength()).to.be.equal(2);
       });
 
       it('Should store correct values in new entry', async () => {
-        const update = await token.scheduledMultiplierUpdates(1);
+        const update = await token.multiplierUpdates(1);
         const currentTime = await helpers.time.latest();
         expect(update.previousMultiplier).to.be.equal(ethers.BigNumber.from(10).pow(18));
         expect(update.newMultiplier).to.be.equal(ethers.BigNumber.from(10).pow(18).mul(95).div(100));
@@ -1864,8 +1864,8 @@ describe("BackedAutoFeeTokenImplementation", function () {
       });
 
       it('Should add new entry with future activation time', async () => {
-        expect(await token.scheduledMultiplierUpdatesLength()).to.be.equal(2);
-        const update = await token.scheduledMultiplierUpdates(1);
+        expect(await token.multiplierUpdatesLength()).to.be.equal(2);
+        const update = await token.multiplierUpdates(1);
         expect(update.activationTime).to.be.equal(futureTime);
       });
 
@@ -1873,7 +1873,7 @@ describe("BackedAutoFeeTokenImplementation", function () {
         // This test is within a nested context where futureTime is already set
         // and multiplier update was already done in the cacheBeforeEach
         // Let's verify the event was already emitted in that transaction
-        const update = await token.scheduledMultiplierUpdates(1);
+        const update = await token.multiplierUpdates(1);
         expect(update.activationTime).to.be.equal(futureTime);
 
         // The MultiplierScheduled event was emitted in the cacheBeforeEach
@@ -1890,9 +1890,9 @@ describe("BackedAutoFeeTokenImplementation", function () {
           await token.updateMultiplierValue(newerMult, currentMult, newerTime);
 
           // Should still have 2 entries (initial + current), previous pending was overwritten
-          expect(await token.scheduledMultiplierUpdatesLength()).to.be.equal(2);
+          expect(await token.multiplierUpdatesLength()).to.be.equal(2);
 
-          const lastUpdate = await token.scheduledMultiplierUpdates(1);
+          const lastUpdate = await token.multiplierUpdates(1);
           expect(lastUpdate.newMultiplier).to.be.equal(newerMult);
           expect(lastUpdate.activationTime).to.be.equal(newerTime);
         });
@@ -1909,7 +1909,7 @@ describe("BackedAutoFeeTokenImplementation", function () {
           await token.updateMultiplierValue(anotherNewMult, currentMult, 0);
 
           // Should have 3 entries now
-          expect(await token.scheduledMultiplierUpdatesLength()).to.be.equal(3);
+          expect(await token.multiplierUpdatesLength()).to.be.equal(3);
         });
       });
     });
@@ -1935,11 +1935,11 @@ describe("BackedAutoFeeTokenImplementation", function () {
         await token.updateMultiplierValue(newMult2, currentMult, 0);
 
         // Should have 3 entries total
-        expect(await token.scheduledMultiplierUpdatesLength()).to.be.equal(3);
+        expect(await token.multiplierUpdatesLength()).to.be.equal(3);
 
         // Verify entries
-        const update1 = await token.scheduledMultiplierUpdates(1);
-        const update2 = await token.scheduledMultiplierUpdates(2);
+        const update1 = await token.multiplierUpdates(1);
+        const update2 = await token.multiplierUpdates(2);
 
         expect(update1.previousMultiplier).to.be.equal(ethers.BigNumber.from(10).pow(18));
         expect(update2.previousMultiplier).to.not.equal(ethers.BigNumber.from(10).pow(18));
@@ -1950,7 +1950,7 @@ describe("BackedAutoFeeTokenImplementation", function () {
   describe('#initialize_v4', () => {
     describe('When called on already initialized v4 contract', () => {
       it('Should revert', async () => {
-        // Current token already has scheduledMultiplierUpdates initialized
+        // Current token already has multiplierUpdates initialized
         await expect(
           token.initialize_v4([])
         ).to.be.revertedWith("BackedAutoFeeTokenImplementation v4 already initialized");
@@ -1959,9 +1959,9 @@ describe("BackedAutoFeeTokenImplementation", function () {
 
     describe('Initialize_v4 behavior validation', () => {
       it('Should only allow initialization when array is empty', async () => {
-        // The initialize_v4 check: scheduledMultiplierUpdates.length == 0
+        // The initialize_v4 check: multiplierUpdates.length == 0
         // This means it's designed for contracts that were deployed before v4
-        const currentLength = await token.scheduledMultiplierUpdatesLength();
+        const currentLength = await token.multiplierUpdatesLength();
         expect(currentLength).to.be.equal(1); // Already initialized with one entry
 
         // Attempting to call it when array is not empty should revert
@@ -1972,20 +1972,20 @@ describe("BackedAutoFeeTokenImplementation", function () {
     });
   });
 
-  describe('#scheduledMultiplierUpdatesLength', () => {
+  describe('#multiplierUpdatesLength', () => {
     it('Should return correct length', async () => {
-      const length = await token.scheduledMultiplierUpdatesLength();
+      const length = await token.multiplierUpdatesLength();
       expect(length).to.be.equal(1);
     });
 
     it('Should increment after each multiplier update', async () => {
-      const initialLength = await token.scheduledMultiplierUpdatesLength();
+      const initialLength = await token.multiplierUpdatesLength();
 
       const currentMult = await token.multiplier();
       const newMult = currentMult.mul(98).div(100);
       await token.updateMultiplierValue(newMult, currentMult, 0);
 
-      const newLength = await token.scheduledMultiplierUpdatesLength();
+      const newLength = await token.multiplierUpdatesLength();
       expect(newLength).to.be.equal(initialLength.add(1));
     });
   });

@@ -240,6 +240,15 @@ contract WrappedBackedTokenImplementation is OwnableUpgradeable, ERC4626Upgradea
         return _convertToShares(assets, MathUpgradeable.Rounding.Down);
     }
 
+    /** @dev See {IERC4626-totalAssets}.
+     * 
+     * Instead of checking actual balances, we assume that we maintain 1:1 ratio between wrapper token and the shares of the underlying token
+     * , so total assets is calculated as the balance of shares of the underlying token kept by the contract, multiplied by the current multiplier of the underlying token.
+     */
+    function totalAssets() public view virtual override returns (uint256) {
+        return _convertToAssets(totalSupply(), MathUpgradeable.Rounding.Down);
+    }
+
     /**
      * @dev Internal conversion function (from assets to shares) with support for rounding direction.
      */
