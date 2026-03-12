@@ -26,6 +26,7 @@ describe.only("Bridge Mint E2E", function () {
   const baseTime = 2_000_000_000;
   const periodLength = 24 * 3600;
   const bridgeMintLimit = BigNumber.from(10).pow(18).mul(1_000_000); // 1M per window
+  const bridgeBurnLimit = BigNumber.from(10).pow(18).mul(1_000_000); // 1M per window
   const bridgeWindowLength = 24 * 3600; // 24h
   const minterAllowance = BigNumber.from(10).pow(18).mul(10_000_000); // 10M
 
@@ -121,7 +122,7 @@ describe.only("Bridge Mint E2E", function () {
     await token.setBurnerAllowance(wrapped.address, minterAllowance);
 
     // Configure bridge
-    await wrapped.setBridge(bridge.address, bridgeMintLimit, bridgeWindowLength);
+    await wrapped.setBridge(bridge.address, bridgeMintLimit, bridgeBurnLimit, bridgeWindowLength);
   });
 
   this.afterAll(async () => {
@@ -147,6 +148,7 @@ describe.only("Bridge Mint E2E", function () {
     it("should configure bridge with correct limits", async () => {
       const cfg = await wrapped.bridges(bridge.address);
       expect(cfg.mintLimit).to.equal(bridgeMintLimit);
+      expect(cfg.burnLimit).to.equal(bridgeBurnLimit);
       expect(cfg.windowLength).to.equal(bridgeWindowLength);
     });
   });
@@ -258,7 +260,7 @@ describe.only("Bridge Mint E2E", function () {
 
     it("should track limits per bridge independently", async () => {
       const bridge2Limit = BigNumber.from(10).pow(18).mul(500_000); // 500k
-      await wrapped.setBridge(bridge2.address, bridge2Limit, bridgeWindowLength);
+      await wrapped.setBridge(bridge2.address, bridge2Limit, bridge2Limit, bridgeWindowLength);
 
       // Bridge 1 mints 800k
       const amount1 = BigNumber.from(10).pow(18).mul(800_000);
@@ -305,7 +307,7 @@ describe.only("Bridge Mint E2E", function () {
       const newLimit = BigNumber.from(10).pow(18).mul(2_000_000);
       const newWindow = 48 * 3600;
 
-      await wrapped.setBridge(bridge.address, newLimit, newWindow);
+      await wrapped.setBridge(bridge.address, newLimit, newLimit, newWindow);
 
       const cfg = await wrapped.bridges(bridge.address);
       expect(cfg.mintLimit).to.equal(newLimit);
@@ -314,7 +316,7 @@ describe.only("Bridge Mint E2E", function () {
     });
 
     it("should allow owner to revoke bridge by setting limit to 0", async () => {
-      await wrapped.setBridge(bridge.address, 0, 0);
+      await wrapped.setBridge(bridge.address, 0, 0, 0);
 
       // Bridge should now be treated as normal user and fail without tokens
       const depositAmount = BigNumber.from(10).pow(18).mul(100);
@@ -325,14 +327,14 @@ describe.only("Bridge Mint E2E", function () {
 
     it("should emit BridgeConfigChanged event", async () => {
       await expect(
-        wrapped.setBridge(bridge.address, bridgeMintLimit, bridgeWindowLength)
+        wrapped.setBridge(bridge.address, bridgeMintLimit, bridgeBurnLimit, bridgeWindowLength)
       ).to.emit(wrapped, "BridgeConfigChanged")
-        .withArgs(bridge.address, bridgeMintLimit, bridgeWindowLength);
+        .withArgs(bridge.address, bridgeMintLimit, bridgeBurnLimit, bridgeWindowLength);
     });
 
     it("should not allow non-owner to configure bridge", async () => {
       await expect(
-        wrapped.connect(bridge.signer).setBridge(bridge.address, bridgeMintLimit, bridgeWindowLength)
+        wrapped.connect(bridge.signer).setBridge(bridge.address, bridgeMintLimit, bridgeBurnLimit, bridgeWindowLength)
       ).to.be.revertedWith("Ownable: caller is not the owner");
     });
   });
@@ -342,7 +344,7 @@ describe.only("Bridge Mint E2E", function () {
       // Set a tiny minter allowance
       await token.setMinterAllowance(wrapped.address, BigNumber.from(10).pow(18).mul(100));
       // Also set a large bridge limit so the bridge limit isn't the blocker
-      await wrapped.setBridge(bridge.address, BigNumber.from(10).pow(18).mul(1_000_000), bridgeWindowLength);
+      await wrapped.setBridge(bridge.address, BigNumber.from(10).pow(18).mul(1_000_000), bridgeBurnLimit, bridgeWindowLength);
 
       const depositAmount = BigNumber.from(10).pow(18).mul(200); // exceeds 100 minter allowance
 
@@ -434,6 +436,46 @@ describe.only("Bridge Mint E2E", function () {
       await expect(
         wrapped.connect(bridge.signer).redeem(wrappedBalance, bridge.address, bridge.address)
       ).to.be.revertedWith("BackedToken: Burner allowance exceeded");
+    });
+
+    it("should revert when bridge exceeds burn limit in a window", async () => {
+      // Set a small burn limit
+      const smallBurnLimit = BigNumber.from(10).pow(18).mul(500);
+      await wrapped.setBridge(bridge.address, bridgeMintLimit, smallBurnLimit, bridgeWindowLength);
+
+      const depositAmount = BigNumber.from(10).pow(18).mul(1000);
+      await wrapped.connect(bridge.signer).deposit(depositAmount, bridge.address);
+      const wrappedBalance = await wrapped.balanceOf(bridge.address);
+
+      // Redeeming all exceeds 500 burn limit
+      await expect(
+        wrapped.connect(bridge.signer).redeem(wrappedBalance, bridge.address, bridge.address)
+      ).to.be.revertedWith("WrappedBackedToken: Bridge burn limit exceeded");
+    });
+
+    it("should reset burn window after windowLength passes", async () => {
+      // Set a small burn limit
+      const smallBurnLimit = BigNumber.from(10).pow(18).mul(500);
+      await wrapped.setBridge(bridge.address, bridgeMintLimit, smallBurnLimit, bridgeWindowLength);
+
+      // Deposit 1000
+      const depositAmount = BigNumber.from(10).pow(18).mul(1000);
+      await wrapped.connect(bridge.signer).deposit(depositAmount, bridge.address);
+
+      // Burn 400 (within limit)
+      const burnAmount = BigNumber.from(10).pow(18).mul(400);
+      await wrapped.connect(bridge.signer).redeem(burnAmount, bridge.address, bridge.address);
+
+      // Burn another 400 should fail (800 > 500 limit)
+      await expect(
+        wrapped.connect(bridge.signer).redeem(burnAmount, bridge.address, bridge.address)
+      ).to.be.revertedWith("WrappedBackedToken: Bridge burn limit exceeded");
+
+      // Advance time past window
+      await helpers.time.increase(bridgeWindowLength + 1);
+
+      // Now burn should work again
+      await wrapped.connect(bridge.signer).redeem(burnAmount, bridge.address, bridge.address);
     });
 
     it("should decrease burner allowance on underlying token", async () => {
