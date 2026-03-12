@@ -66,7 +66,6 @@ contract WrappedBackedTokenFactory is Ownable {
             "Factory: address should not be 0"
         );
 
-        wrappedTokenImplementation = new WrappedBackedTokenImplementation();
         proxyAdmin = new ProxyAdmin();
         proxyAdmin.transferOwnership(proxyAdminOwner);
     }
@@ -102,7 +101,7 @@ contract WrappedBackedTokenFactory is Ownable {
         );
 
         WrappedBackedTokenProxy newProxy = new WrappedBackedTokenProxy{salt: salt}(
-            address(0),
+            address(this), //Using this as implementation to not make address dependent on implementation address
             address(this),
             ""
         );
