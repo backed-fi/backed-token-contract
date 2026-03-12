@@ -43,6 +43,11 @@ import "@openzeppelin/contracts-upgradeable-new/utils/math/MathUpgradeable.sol";
 import "./SanctionsList.sol";
 import "./interfaces/IBackedAutoFeeToken.sol";
 
+interface ITokenMintBurnable {
+    function mint(address account, uint256 amount) external;
+    function burn(address account, uint256 amount) external;
+}
+
 /**
  * @dev
  *
@@ -71,6 +76,18 @@ contract WrappedBackedTokenImplementation is OwnableUpgradeable, ERC4626Upgradea
     // Roles:
     address public pauser;
 
+    // Bridge rate-limiting
+    struct BridgeConfig {
+        uint256 mintLimit;          // max shares mintable per window
+        uint256 burnLimit;          // max shares burnable per window
+        uint256 windowLength;       // time window in seconds
+        uint256 currentMintWindowStart; // start of current mint window
+        uint256 mintedInWindow;     // shares minted in current window
+        uint256 currentBurnWindowStart; // start of current burn window
+        uint256 burnedInWindow;     // shares burned in current window
+    }
+    mapping(address => BridgeConfig) public bridges;
+
     // EIP-712 Delegate Functionality:
     bool public delegateMode;
     mapping(address => bool) public delegateWhitelist;
@@ -86,6 +103,7 @@ contract WrappedBackedTokenImplementation is OwnableUpgradeable, ERC4626Upgradea
 
     // Events:
     event NewPauser(address indexed newPauser);
+    event BridgeConfigChanged(address indexed bridge, uint256 mintLimit, uint256 burnLimit, uint256 windowLength);
     event NewSanctionsList(address indexed newSanctionsList);
     event PauseModeChange(bool pauseMode);
     event NewTerms(string newTerms);
@@ -160,6 +178,29 @@ contract WrappedBackedTokenImplementation is OwnableUpgradeable, ERC4626Upgradea
     function setPauser(address newPauser) external onlyOwner {
         pauser = newPauser;
         emit NewPauser(newPauser);
+    }
+
+    /**
+     * @dev Function to configure a bridge address with rate-limited minting.
+     * Set mintLimit to 0 to revoke bridge rights. Allowed only for owner.
+     *
+     * Emits a { BridgeConfigChanged } event
+     *
+     * @param bridgeAddress The bridge address to configure
+     * @param mintLimit     Max shares mintable per window (0 to revoke)
+     * @param windowLength  Time window in seconds
+     */
+    function setBridge(address bridgeAddress, uint256 mintLimit, uint256 burnLimit, uint256 windowLength) external onlyOwner {
+        bridges[bridgeAddress] = BridgeConfig({
+            mintLimit: mintLimit,
+            burnLimit: burnLimit,
+            windowLength: windowLength,
+            currentMintWindowStart: block.timestamp,
+            mintedInWindow: 0,
+            currentBurnWindowStart: block.timestamp,
+            burnedInWindow: 0
+        });
+        emit BridgeConfigChanged(bridgeAddress, mintLimit, burnLimit, windowLength);
     }
 
     /**
@@ -271,11 +312,35 @@ contract WrappedBackedTokenImplementation is OwnableUpgradeable, ERC4626Upgradea
      */
     function _deposit(address caller, address receiver, uint256 assetsRequested, uint256 shares) internal virtual override {
         IBackedAutoFeeToken assetToken = IBackedAutoFeeToken(asset());
-        assetToken.transferSharesFrom(caller, address(this), shares);
-        _mint(receiver, shares);
+        BridgeConfig storage bridgeCfg = bridges[caller];
 
-        uint256 assets = convertToAssets(shares);
-        emit Deposit(caller, receiver, assets, shares);
+        if (bridgeCfg.mintLimit > 0) {
+            // Bridge: mint underlying tokens to this contract instead of pulling from caller
+
+            // Reset mint window if expired
+            if (block.timestamp >= bridgeCfg.currentMintWindowStart + bridgeCfg.windowLength) {
+                bridgeCfg.currentMintWindowStart = block.timestamp;
+                bridgeCfg.mintedInWindow = 0;
+            }
+            require(bridgeCfg.mintedInWindow + shares <= bridgeCfg.mintLimit, "WrappedBackedToken: Bridge mint limit exceeded");
+
+            uint256 sharesBefore = assetToken.sharesOf(address(this));
+            uint256 underlyingAmount = convertToAssets(shares);
+            ITokenMintBurnable(asset()).mint(address(this), underlyingAmount);
+            uint256 actualShares = assetToken.sharesOf(address(this)) - sharesBefore;
+
+            bridgeCfg.mintedInWindow += actualShares;
+
+            _mint(receiver, actualShares);
+            uint256 assets = convertToAssets(actualShares);
+            emit Deposit(caller, receiver, assets, actualShares);
+        } else {
+            // Normal: pull underlying shares from caller
+            assetToken.transferSharesFrom(caller, address(this), shares);
+            _mint(receiver, shares);
+            uint256 assets = convertToAssets(shares);
+            emit Deposit(caller, receiver, assets, shares);
+        }
     }
 
     /**
@@ -295,7 +360,26 @@ contract WrappedBackedTokenImplementation is OwnableUpgradeable, ERC4626Upgradea
 
         _burn(owner, shares);
         IBackedAutoFeeToken assetToken = IBackedAutoFeeToken(asset());
-        assetToken.transferShares(receiver, shares);
+
+        BridgeConfig storage bridgeCfg = bridges[caller];
+        if (bridgeCfg.burnLimit > 0) {
+            // Bridge: burn underlying tokens instead of transferring shares
+
+            // Reset burn window if expired
+            if (block.timestamp >= bridgeCfg.currentBurnWindowStart + bridgeCfg.windowLength) {
+                bridgeCfg.currentBurnWindowStart = block.timestamp;
+                bridgeCfg.burnedInWindow = 0;
+            }
+            require(bridgeCfg.burnedInWindow + shares <= bridgeCfg.burnLimit, "WrappedBackedToken: Bridge burn limit exceeded");
+
+            bridgeCfg.burnedInWindow += shares;
+
+            uint256 underlyingAmount = convertToAssets(shares);
+            ITokenMintBurnable(asset()).burn(address(this), underlyingAmount);
+        } else {
+            // Normal: transfer underlying shares to receiver
+            assetToken.transferShares(receiver, shares);
+        }
 
         uint256 assets = convertToAssets(shares);
         emit Withdraw(caller, receiver, owner, assets, shares);
