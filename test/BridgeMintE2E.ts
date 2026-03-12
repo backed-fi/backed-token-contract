@@ -18,7 +18,7 @@ type SignerWithAddress = {
   address: string;
 };
 
-describe.only("Bridge Mint E2E", function () {
+describe("Bridge Mint E2E", function () {
   const tokenName = "Backed Test Token";
   const tokenSymbol = "bTEST";
   const wrappedTokenName = "Wrapped Backed Test Token";
