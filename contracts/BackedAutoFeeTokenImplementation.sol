@@ -187,6 +187,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation, IBackedA
             activationTime: 0
         }));
         for (uint i = 0; i < _pastMultipliersUpdates.length; i++) {    
+            require(_pastMultipliersUpdates[i].previousMultiplier > 0);
             multiplierUpdates.push(MultiplierUpdate({
                 previousMultiplier: _pastMultipliersUpdates[i].previousMultiplier,
                 newMultiplier: _pastMultipliersUpdates[i].newMultiplier,
