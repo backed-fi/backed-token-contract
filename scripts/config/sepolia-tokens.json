@@ -1,0 +1,66 @@
+[
+  {
+    "name": "Tesla xStock EthCC",
+    "symbol": "TSLAxcc",
+    "periodLength": 86400,
+    "feePerPeriod": "0",
+    "type": "stock",
+    "address": "0x99Bd766816720349d2820DDa5dF6540E1f8E37e3"
+  },
+  {
+    "name": "NVIDIA xStock EthCC",
+    "symbol": "NVDAxcc",
+    "periodLength": 86400,
+    "feePerPeriod": "0",
+    "type": "stock",
+    "address": "0xE192289dDE12522620AaFb992b3043Cdc6463694"
+  },
+  {
+    "name": "Alphabet xStock EthCC",
+    "symbol": "GOOGLxcc",
+    "periodLength": 86400,
+    "feePerPeriod": "0",
+    "type": "stock",
+    "address": "0xA2bfeA4886dC5419d340e33eAa8C76ea6e0EB8d8"
+  },
+  {
+    "name": "Apple xStock EthCC",
+    "symbol": "AAPLxcc",
+    "periodLength": 86400,
+    "feePerPeriod": "0",
+    "type": "stock",
+    "address": "0x1B5E95321862A4b98bF20C2724a0D0dAa64E07D0"
+  },
+  {
+    "name": "SP500 xStock EthCC",
+    "symbol": "SPYxcc",
+    "periodLength": 86400,
+    "feePerPeriod": "0",
+    "type": "etf",
+    "address": "0x83e908c8B023d36ED0F32FD449f8752ba5020b9b"
+  },
+  {
+    "name": "TBLL xStock EthCC",
+    "symbol": "TBLLxcc",
+    "periodLength": 86400,
+    "feePerPeriod": "0",
+    "type": "etf",
+    "address": "0x6a33A6d38DAB7Adf3D0d0DAccDe4d807291e9839"
+  },
+  {
+    "name": "Gold xStock EthCC",
+    "symbol": "GLDxcc",
+    "periodLength": 86400,
+    "feePerPeriod": "0",
+    "type": "commodity",
+    "address": "0x29C3e085d8535E1fC19949c656259f088e8f2CD1"
+  },
+  {
+    "name": "iShares Silver Trust xStock EthCC",
+    "symbol": "SLVxcc",
+    "periodLength": 86400,
+    "feePerPeriod": "0",
+    "type": "commodity",
+    "address": "0xc4E52438b541862c46640BFCe5Cc903Ec5837259"
+  }
+]
