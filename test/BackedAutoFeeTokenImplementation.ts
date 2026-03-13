@@ -731,7 +731,7 @@ describe("BackedAutoFeeTokenImplementation", function () {
   it("Try to mint from unauthorized account", async function () {
     await token.setMinter(minter.address);
     await expect(token.mint(tmpAccount.address, 100)).to.revertedWith(
-      "BackedToken: Only minter"
+      "BackedToken: Minter allowance exceeded"
     );
   });
 
@@ -802,7 +802,7 @@ describe("BackedAutoFeeTokenImplementation", function () {
     await token.setBurner(burner.address);
     await token.connect(minter.signer).mint(tmpAccount.address, 100);
     await expect(token.burn(tmpAccount.address, 100)).to.revertedWith(
-      "BackedToken: Only burner"
+      "BackedToken: Cannot burn account"
     );
   });
 
