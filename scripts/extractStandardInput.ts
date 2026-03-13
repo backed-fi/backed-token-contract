@@ -4,6 +4,7 @@
  *
  * Usage:
  *   npx hardhat run scripts/extractStandardInput.ts
+ *   TARGET_CONTRACT=contracts/TokenTap.sol npx hardhat run scripts/extractStandardInput.ts
  *
  * Output:
  *   standard-input-<ContractName>.json
@@ -12,10 +13,11 @@
 import * as fs from "fs";
 import * as path from "path";
 
-// ── Configure here ────────────────────────────────────────────────────────────
+// ── Configure here (or override via TARGET_CONTRACT env var) ──────────────────
 const TARGET_CONTRACT_FILE =
-  "contracts/BackedAutoFeeTokenImplementation.sol";
-const OUTPUT_FILE = "standard-input-BackedAutoFeeTokenImplementation.json";
+  process.env.TARGET_CONTRACT ?? "contracts/BackedAutoFeeTokenImplementation.sol";
+const contractName = path.posix.basename(TARGET_CONTRACT_FILE, ".sol");
+const OUTPUT_FILE = `standard-input-${contractName}.json`;
 // ─────────────────────────────────────────────────────────────────────────────
 
 function collectImports(
