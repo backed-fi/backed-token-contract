@@ -5,7 +5,9 @@
     "periodLength": 86400,
     "feePerPeriod": "0",
     "type": "stock",
-    "address": "0x99Bd766816720349d2820DDa5dF6540E1f8E37e3"
+    "address": "0x99Bd766816720349d2820DDa5dF6540E1f8E37e3",
+    "startingPrice": 391.2,
+    "oracleAddress": "0x031963Cf8b88F11dA2E56D5386628077e2f9C30a"
   },
   {
     "name": "NVIDIA xStock EthCC",
@@ -13,7 +15,9 @@
     "periodLength": 86400,
     "feePerPeriod": "0",
     "type": "stock",
-    "address": "0xE192289dDE12522620AaFb992b3043Cdc6463694"
+    "address": "0xE192289dDE12522620AaFb992b3043Cdc6463694",
+    "startingPrice": 180.25,
+    "oracleAddress": "0x0953fd742845Ed23E54984aA4F7621A5256f1FE5"
   },
   {
     "name": "Alphabet xStock EthCC",
@@ -21,7 +25,9 @@
     "periodLength": 86400,
     "feePerPeriod": "0",
     "type": "stock",
-    "address": "0xA2bfeA4886dC5419d340e33eAa8C76ea6e0EB8d8"
+    "address": "0xA2bfeA4886dC5419d340e33eAa8C76ea6e0EB8d8",
+    "startingPrice": 302.28,
+    "oracleAddress": "0x92eD04d68E10B999719731f9E9B1E836812440f0"
   },
   {
     "name": "Apple xStock EthCC",
@@ -29,7 +35,9 @@
     "periodLength": 86400,
     "feePerPeriod": "0",
     "type": "stock",
-    "address": "0x1B5E95321862A4b98bF20C2724a0D0dAa64E07D0"
+    "address": "0x1B5E95321862A4b98bF20C2724a0D0dAa64E07D0",
+    "startingPrice": 250.12,
+    "oracleAddress": "0x89440b5b376f7E1A6A208Bf45D226BE4F5722a8F"
   },
   {
     "name": "SP500 xStock EthCC",
@@ -37,7 +45,9 @@
     "periodLength": 86400,
     "feePerPeriod": "0",
     "type": "etf",
-    "address": "0x83e908c8B023d36ED0F32FD449f8752ba5020b9b"
+    "address": "0x83e908c8B023d36ED0F32FD449f8752ba5020b9b",
+    "startingPrice": 662.29,
+    "oracleAddress": "0xC1a4FB0f5a7E3F0895Ef1CCE402757e7c9f1888C"
   },
   {
     "name": "TBLL xStock EthCC",
@@ -45,7 +55,9 @@
     "periodLength": 86400,
     "feePerPeriod": "0",
     "type": "etf",
-    "address": "0x6a33A6d38DAB7Adf3D0d0DAccDe4d807291e9839"
+    "address": "0x6a33A6d38DAB7Adf3D0d0DAccDe4d807291e9839",
+    "startingPrice": 105.7,
+    "oracleAddress": "0x97AD8fc4505d90FaEaf9c74506d04271fC40d0E9"
   },
   {
     "name": "Gold xStock EthCC",
@@ -53,7 +65,9 @@
     "periodLength": 86400,
     "feePerPeriod": "0",
     "type": "commodity",
-    "address": "0x29C3e085d8535E1fC19949c656259f088e8f2CD1"
+    "address": "0x29C3e085d8535E1fC19949c656259f088e8f2CD1",
+    "startingPrice": 460.84,
+    "oracleAddress": "0x19e74f44d4736106f4D764e6De29257943734592"
   },
   {
     "name": "iShares Silver Trust xStock EthCC",
@@ -61,6 +75,8 @@
     "periodLength": 86400,
     "feePerPeriod": "0",
     "type": "commodity",
-    "address": "0xc4E52438b541862c46640BFCe5Cc903Ec5837259"
+    "address": "0xc4E52438b541862c46640BFCe5Cc903Ec5837259",
+    "startingPrice": 72.69,
+    "oracleAddress": "0x4b65CDf864205ec5DD317491d9330FF635a543f6"
   }
 ]
