@@ -1,0 +1,18 @@
+{
+  "name": "ethcc-hackathon-multiplier-keeper",
+  "version": "1.0.0",
+  "private": true,
+  "description": "EthCC hackathon — periodic keeper that updates BackedAutoFeeToken multipliers on Sepolia",
+  "scripts": {
+    "start": "ts-node --project tsconfig.json index.ts"
+  },
+  "dependencies": {
+    "dotenv": "^10.0.0",
+    "ethers": "^5.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "ts-node": "^10.7.0",
+    "typescript": "^4.6.2"
+  }
+}

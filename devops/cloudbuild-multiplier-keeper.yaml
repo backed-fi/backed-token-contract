@@ -1,0 +1,68 @@
+# Cloud Build pipeline for the Multiplier Keeper Cloud Run Job.
+#
+# Triggered manually or via a Cloud Build trigger on push to the relevant branch.
+# Does NOT create the Cloud Run Job or Cloud Scheduler — see the one-time setup
+# commands in scripts/multiplierKeeper/README.md.
+#
+# Required substitutions (set in Cloud Build trigger or passed via --substitutions):
+#   _REGION         — GCP region, e.g. europe-west6
+#   _REGISTRY       — Artifact Registry repo, e.g. europe-west6-docker.pkg.dev/$PROJECT_ID/backend
+#
+# Secrets expected in Secret Manager:
+#   MULTIPLIER_UPDATER_PK  — private key of the multiplierUpdater wallet
+#   SEPOLIA_RPC_URL        — Sepolia RPC endpoint
+
+substitutions:
+  _REGION: europe-west6
+  _REGISTRY: europe-west6-docker.pkg.dev/$PROJECT_ID/backend
+
+steps:
+  # Pull latest image for layer caching
+  - name: 'gcr.io/cloud-builders/docker:24.0.9'
+    entrypoint: bash
+    args:
+      - '-c'
+      - 'docker pull $_REGISTRY/ethcc-hackathon-multiplier-keeper:latest || exit 0'
+
+  # Build the keeper image (explicitly target linux/amd64 for Cloud Run)
+  - name: 'gcr.io/cloud-builders/docker:24.0.9'
+    args:
+      - build
+      - '--platform'
+      - 'linux/amd64'
+      - '-f'
+      - 'scripts/multiplierKeeper/Dockerfile'
+      - '-t'
+      - '$_REGISTRY/ethcc-hackathon-multiplier-keeper:$COMMIT_SHA'
+      - '-t'
+      - '$_REGISTRY/ethcc-hackathon-multiplier-keeper:latest'
+      - '--cache-from'
+      - '$_REGISTRY/ethcc-hackathon-multiplier-keeper:latest'
+      - '.'
+    id: build
+
+  # Push both tags
+  - name: 'gcr.io/cloud-builders/docker:24.0.9'
+    args: ['push', '--all-tags', '$_REGISTRY/ethcc-hackathon-multiplier-keeper']
+    waitFor: [build]
+    id: push
+
+  # Update the Cloud Run Job to the new image
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - update
+      - ethcc-hackathon-multiplier-keeper
+      - '--image'
+      - '$_REGISTRY/ethcc-hackathon-multiplier-keeper:$COMMIT_SHA'
+      - '--region'
+      - '$_REGION'
+    waitFor: [push]
+
+options:
+  pool:
+    name: 'projects/$PROJECT_ID/locations/$_REGION/workerPools/backedfi-cloudbuild-pool'
+
+logsBucket: 'gs://$PROJECT_ID-cloudbuild-backend-logs-bucket'
