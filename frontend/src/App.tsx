@@ -11,6 +11,7 @@ import {
 import '@fontsource/inter';
 import { TokensTable } from './components/TokensTable';
 import { useTokenPrices } from './hooks/useTokenPrices';
+import { useTokenBalances } from './hooks/useTokenBalances';
 import { useWallet } from './hooks/useWallet';
 import tokens from '../../scripts/config/sepolia-tokens.json';
 
@@ -39,8 +40,10 @@ function shortAddress(addr: string) {
 
 export default function App() {
   const oracleAddresses = useMemo(() => tokens.map((t) => t.oracleAddress), []);
+  const tokenAddresses = useMemo(() => tokens.map((t) => t.address), []);
   const prices = useTokenPrices(oracleAddresses);
   const { account, signer, isConnecting, connect, disconnect } = useWallet();
+  const balances = useTokenBalances(account, tokenAddresses);
 
   return (
     <ThemeProvider theme={theme}>
@@ -70,7 +73,7 @@ export default function App() {
             </Button>
           )}
         </Box>
-        <TokensTable tokens={tokens} prices={prices} account={account} signer={signer} />
+        <TokensTable tokens={tokens} prices={prices} balances={balances} account={account} signer={signer} />
       </Container>
     </ThemeProvider>
   );

@@ -20,6 +20,7 @@ import {
 import CheckIcon from '@mui/icons-material/Check';
 import { ethers } from 'ethers';
 import { PriceMap } from '../hooks/useTokenPrices';
+import { BalanceMap } from '../hooks/useTokenBalances';
 
 const TOKEN_TAP_ADDRESS = '0xa6cd982a08f3dfc2d8ce2a74e66b6b49efe5ef86';
 const TOKEN_TAP_ABI = [
@@ -47,6 +48,7 @@ interface Token {
 interface Props {
   tokens: Token[];
   prices: PriceMap;
+  balances: BalanceMap;
   account: string | null;
   signer: ethers.JsonRpcSigner | null;
 }
@@ -189,7 +191,7 @@ const ClaimButton: React.FC<ClaimButtonProps> = ({ token, signer }) => {
   );
 };
 
-export const TokensTable: React.FC<Props> = ({ tokens, prices, account, signer }) => {
+export const TokensTable: React.FC<Props> = ({ tokens, prices, balances, account, signer }) => {
   return (
     <TableContainer component={Paper} elevation={0} sx={{ border: '1px solid', borderColor: 'divider' }}>
       <Table>
@@ -199,6 +201,7 @@ export const TokensTable: React.FC<Props> = ({ tokens, prices, account, signer }
             <TableCell>Ticker</TableCell>
             <TableCell>Type</TableCell>
             <TableCell>Price</TableCell>
+            <TableCell>Balance</TableCell>
             <TableCell>Contract Address</TableCell>
             <TableCell align="center">Claim</TableCell>
           </TableRow>
@@ -206,6 +209,7 @@ export const TokensTable: React.FC<Props> = ({ tokens, prices, account, signer }
         <TableBody>
           {tokens.map((token) => {
             const price = prices[token.oracleAddress];
+            const balance = balances[token.address];
             return (
               <TableRow key={token.address} hover>
                 <TableCell>
@@ -244,6 +248,19 @@ export const TokensTable: React.FC<Props> = ({ tokens, prices, account, signer }
                     >
                       ${price.toFixed(2)}
                     </Link>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {!account ? (
+                    <Typography variant="body2" color="text.disabled">—</Typography>
+                  ) : !(token.address in balances) ? (
+                    <Skeleton width={60} />
+                  ) : balance === null ? (
+                    <Typography variant="body2" color="text.disabled">—</Typography>
+                  ) : (
+                    <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                      {parseFloat(balance).toFixed(4)}
+                    </Typography>
                   )}
                 </TableCell>
                 <TableCell>
