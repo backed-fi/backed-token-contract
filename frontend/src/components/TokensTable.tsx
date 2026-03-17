@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
+  Avatar,
   Table,
   TableBody,
   TableCell,
@@ -19,6 +20,11 @@ import {
 } from '@mui/material';
 import CheckIcon from '@mui/icons-material/Check';
 import { ethers } from 'ethers';
+
+function tokenIconSrc(symbol: string): string {
+  // e.g. "TSLAxcc" → "TSLAx" → "/icons/assets/TSLAx.svg"
+  return `/icons/assets/${symbol.replace('xcc', 'x')}.svg`;
+}
 import { PriceMap } from '../hooks/useTokenPrices';
 import { BalanceMap } from '../hooks/useTokenBalances';
 import { MultiplierMap } from '../hooks/useTokenMultipliers';
@@ -199,6 +205,7 @@ export const TokensTable: React.FC<Props> = ({ tokens, prices, balances, multipl
       <Table>
         <TableHead>
           <TableRow>
+            <TableCell sx={{ width: 48 }} />
             <TableCell>Name</TableCell>
             <TableCell>Ticker</TableCell>
             <TableCell>Type</TableCell>
@@ -216,6 +223,20 @@ export const TokensTable: React.FC<Props> = ({ tokens, prices, balances, multipl
             const multiplier = multipliers[token.address];
             return (
               <TableRow key={token.address} hover>
+                <TableCell sx={{ py: 1 }}>
+                  <Avatar
+                    src={tokenIconSrc(token.symbol)}
+                    alt={token.symbol}
+                    slotProps={{
+                      img: {
+                        onError: (e: React.SyntheticEvent<HTMLImageElement>) => {
+                          e.currentTarget.src = '/icons/assets/placeholder.svg';
+                        },
+                      },
+                    }}
+                    sx={{ width: 32, height: 32 }}
+                  />
+                </TableCell>
                 <TableCell>
                   <Typography variant="body2" fontWeight={500}>
                     {token.name}

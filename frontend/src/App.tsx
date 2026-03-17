@@ -56,11 +56,23 @@ export default function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Container maxWidth="lg" sx={{ py: 6 }}>
+      <Box
+        sx={{
+          position: 'fixed',
+          inset: 0,
+          backgroundImage: 'url(/images/backgrounds/abstract-lines.svg)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center bottom',
+          opacity: 0.4,
+          pointerEvents: 'none',
+          zIndex: 0,
+        }}
+      />
+      <Container maxWidth="lg" sx={{ py: 6, position: 'relative', zIndex: 1 }}>
         <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 4 }}>
           <Box>
             <Typography variant="h4" fontWeight={700} gutterBottom>
-              Hackathon Tokens
+              xStocks Hackathon Tokens
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Deployed on Sepolia testnet &mdash; {tokens.length} tokens &mdash; prices refresh every 30s
