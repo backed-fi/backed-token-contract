@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Table,
   TableBody,
@@ -22,7 +22,19 @@ import { ethers } from 'ethers';
 import { PriceMap } from '../hooks/useTokenPrices';
 
 const TOKEN_TAP_ADDRESS = '0xa6cd982a08f3dfc2d8ce2a74e66b6b49efe5ef86';
-const TOKEN_TAP_ABI = ['function claim(address token)'];
+const TOKEN_TAP_ABI = [
+  'function claim(address token)',
+  'function cooldownRemaining(address user, address token) view returns (uint256)',
+];
+
+function formatCountdown(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`;
+  if (m > 0) return `${m}m ${String(s).padStart(2, '0')}s`;
+  return `${s}s`;
+}
 
 interface Token {
   name: string;
@@ -55,6 +67,43 @@ interface ClaimButtonProps {
 const ClaimButton: React.FC<ClaimButtonProps> = ({ token, signer }) => {
   const [status, setStatus] = useState<ClaimStatus>('idle');
   const [errorMsg, setErrorMsg] = useState('');
+  const [cooldown, setCooldown] = useState<number | null>(null); // null = loading
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fetchCooldown = useCallback(async () => {
+    if (!signer) return;
+    try {
+      const tap = new ethers.Contract(TOKEN_TAP_ADDRESS, TOKEN_TAP_ABI, signer);
+      const user = await signer.getAddress();
+      const remaining: bigint = await tap.cooldownRemaining(user, token.address);
+      setCooldown(Number(remaining));
+    } catch {
+      setCooldown(0);
+    }
+  }, [signer, token.address]);
+
+  // Fetch on mount and whenever signer changes
+  useEffect(() => {
+    if (!signer) { setCooldown(null); return; }
+    fetchCooldown();
+  }, [signer, fetchCooldown]);
+
+  // Tick down every second; re-fetch from chain when it hits 0
+  const hasCooldown = cooldown !== null && cooldown > 0;
+  useEffect(() => {
+    if (!hasCooldown) return;
+    intervalRef.current = setInterval(() => {
+      setCooldown((prev) => {
+        if (prev === null || prev <= 1) {
+          clearInterval(intervalRef.current!);
+          fetchCooldown(); // confirm with chain
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(intervalRef.current!);
+  }, [hasCooldown, fetchCooldown]);
 
   const handleClaim = async () => {
     if (!signer) return;
@@ -64,6 +113,7 @@ const ClaimButton: React.FC<ClaimButtonProps> = ({ token, signer }) => {
       const tx = await tap.claim(token.address);
       await tx.wait();
       setStatus('success');
+      fetchCooldown();
       setTimeout(() => setStatus('idle'), 3000);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -76,7 +126,7 @@ const ClaimButton: React.FC<ClaimButtonProps> = ({ token, signer }) => {
     return (
       <Tooltip title="Connect wallet to claim">
         <span>
-          <Button size="small" variant="outlined" disabled>
+          <Button size="small" variant="outlined" disabled sx={{ minWidth: 80 }}>
             Claim
           </Button>
         </span>
@@ -86,7 +136,7 @@ const ClaimButton: React.FC<ClaimButtonProps> = ({ token, signer }) => {
 
   if (status === 'pending') {
     return (
-      <Button size="small" variant="outlined" disabled sx={{ minWidth: 72 }}>
+      <Button size="small" variant="outlined" disabled sx={{ minWidth: 80 }}>
         <CircularProgress size={16} />
       </Button>
     );
@@ -94,15 +144,35 @@ const ClaimButton: React.FC<ClaimButtonProps> = ({ token, signer }) => {
 
   if (status === 'success') {
     return (
-      <Button size="small" variant="outlined" color="success" disabled sx={{ minWidth: 72 }}>
+      <Button size="small" variant="outlined" color="success" disabled sx={{ minWidth: 80 }}>
         <CheckIcon fontSize="small" />
       </Button>
     );
   }
 
+  if (cooldown === null) {
+    return (
+      <Button size="small" variant="outlined" disabled sx={{ minWidth: 80 }}>
+        <CircularProgress size={16} />
+      </Button>
+    );
+  }
+
+  if (cooldown > 0) {
+    return (
+      <Tooltip title="Cooldown active — come back later">
+        <span>
+          <Button size="small" variant="outlined" disabled sx={{ minWidth: 80, fontVariantNumeric: 'tabular-nums' }}>
+            {formatCountdown(cooldown)}
+          </Button>
+        </span>
+      </Tooltip>
+    );
+  }
+
   return (
     <>
-      <Button size="small" variant="outlined" onClick={handleClaim} sx={{ minWidth: 72 }}>
+      <Button size="small" variant="outlined" onClick={handleClaim} sx={{ minWidth: 80 }}>
         Claim
       </Button>
       <Snackbar
