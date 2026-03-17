@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   createTheme,
   ThemeProvider,
@@ -10,10 +10,11 @@ import {
 } from '@mui/material';
 import '@fontsource/inter';
 import { TokensTable } from './components/TokensTable';
+import { WalletPickerDialog } from './components/WalletPickerDialog';
 import { useTokenPrices } from './hooks/useTokenPrices';
 import { useTokenBalances } from './hooks/useTokenBalances';
 import { useTokenMultipliers } from './hooks/useTokenMultipliers';
-import { useWallet } from './hooks/useWallet';
+import { useWallet, WalletType } from './hooks/useWallet';
 import tokens from '../../scripts/config/sepolia-tokens.json';
 
 const theme = createTheme({
@@ -46,6 +47,11 @@ export default function App() {
   const { account, signer, isConnecting, connect, disconnect } = useWallet();
   const balances = useTokenBalances(account, tokenAddresses);
   const multipliers = useTokenMultipliers(tokenAddresses);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  const handleWalletSelect = (wallet: WalletType) => {
+    connect(wallet);
+  };
 
   return (
     <ThemeProvider theme={theme}>
@@ -67,7 +73,7 @@ export default function App() {
           ) : (
             <Button
               variant="contained"
-              onClick={connect}
+              onClick={() => setPickerOpen(true)}
               disabled={isConnecting}
               sx={{ mt: 0.5 }}
             >
@@ -75,6 +81,13 @@ export default function App() {
             </Button>
           )}
         </Box>
+
+        <WalletPickerDialog
+          open={pickerOpen}
+          onClose={() => setPickerOpen(false)}
+          onSelect={handleWalletSelect}
+        />
+
         <TokensTable tokens={tokens} prices={prices} balances={balances} multipliers={multipliers} account={account} signer={signer} />
       </Container>
     </ThemeProvider>
