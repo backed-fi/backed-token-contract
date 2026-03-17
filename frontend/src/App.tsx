@@ -36,9 +36,6 @@ const theme = createTheme({
   },
 });
 
-function shortAddress(addr: string) {
-  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
-}
 
 export default function App() {
   const oracleAddresses = useMemo(() => tokens.map((t) => t.oracleAddress), []);
@@ -79,9 +76,14 @@ export default function App() {
             </Typography>
           </Box>
           {account ? (
-            <Button variant="outlined" onClick={disconnect} sx={{ mt: 0.5 }}>
-              {shortAddress(account)}
-            </Button>
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5, mt: 0.5 }}>
+              <Typography variant="caption" color="text.secondary">
+                Wallet connected
+              </Typography>
+              <Button variant="outlined" onClick={disconnect}>
+                Disconnect
+              </Button>
+            </Box>
           ) : (
             <Button
               variant="contained"
