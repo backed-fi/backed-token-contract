@@ -12,6 +12,7 @@ import '@fontsource/inter';
 import { TokensTable } from './components/TokensTable';
 import { useTokenPrices } from './hooks/useTokenPrices';
 import { useTokenBalances } from './hooks/useTokenBalances';
+import { useTokenMultipliers } from './hooks/useTokenMultipliers';
 import { useWallet } from './hooks/useWallet';
 import tokens from '../../scripts/config/sepolia-tokens.json';
 
@@ -44,6 +45,7 @@ export default function App() {
   const prices = useTokenPrices(oracleAddresses);
   const { account, signer, isConnecting, connect, disconnect } = useWallet();
   const balances = useTokenBalances(account, tokenAddresses);
+  const multipliers = useTokenMultipliers(tokenAddresses);
 
   return (
     <ThemeProvider theme={theme}>
@@ -73,7 +75,7 @@ export default function App() {
             </Button>
           )}
         </Box>
-        <TokensTable tokens={tokens} prices={prices} balances={balances} account={account} signer={signer} />
+        <TokensTable tokens={tokens} prices={prices} balances={balances} multipliers={multipliers} account={account} signer={signer} />
       </Container>
     </ThemeProvider>
   );

@@ -21,6 +21,7 @@ import CheckIcon from '@mui/icons-material/Check';
 import { ethers } from 'ethers';
 import { PriceMap } from '../hooks/useTokenPrices';
 import { BalanceMap } from '../hooks/useTokenBalances';
+import { MultiplierMap } from '../hooks/useTokenMultipliers';
 
 const TOKEN_TAP_ADDRESS = '0xa6cd982a08f3dfc2d8ce2a74e66b6b49efe5ef86';
 const TOKEN_TAP_ABI = [
@@ -49,6 +50,7 @@ interface Props {
   tokens: Token[];
   prices: PriceMap;
   balances: BalanceMap;
+  multipliers: MultiplierMap;
   account: string | null;
   signer: ethers.JsonRpcSigner | null;
 }
@@ -191,7 +193,7 @@ const ClaimButton: React.FC<ClaimButtonProps> = ({ token, signer }) => {
   );
 };
 
-export const TokensTable: React.FC<Props> = ({ tokens, prices, balances, account, signer }) => {
+export const TokensTable: React.FC<Props> = ({ tokens, prices, balances, multipliers, account, signer }) => {
   return (
     <TableContainer component={Paper} elevation={0} sx={{ border: '1px solid', borderColor: 'divider' }}>
       <Table>
@@ -201,6 +203,7 @@ export const TokensTable: React.FC<Props> = ({ tokens, prices, balances, account
             <TableCell>Ticker</TableCell>
             <TableCell>Type</TableCell>
             <TableCell>Price</TableCell>
+            <TableCell>Multiplier</TableCell>
             <TableCell>Balance</TableCell>
             <TableCell>Contract Address</TableCell>
             <TableCell align="center">Claim</TableCell>
@@ -210,6 +213,7 @@ export const TokensTable: React.FC<Props> = ({ tokens, prices, balances, account
           {tokens.map((token) => {
             const price = prices[token.oracleAddress];
             const balance = balances[token.address];
+            const multiplier = multipliers[token.address];
             return (
               <TableRow key={token.address} hover>
                 <TableCell>
@@ -248,6 +252,17 @@ export const TokensTable: React.FC<Props> = ({ tokens, prices, balances, account
                     >
                       ${price.toFixed(2)}
                     </Link>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {!(token.address in multipliers) ? (
+                    <Skeleton width={60} />
+                  ) : multiplier === null ? (
+                    <Typography variant="body2" color="text.disabled">—</Typography>
+                  ) : (
+                    <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                      {multiplier.toFixed(6)}
+                    </Typography>
                   )}
                 </TableCell>
                 <TableCell>
