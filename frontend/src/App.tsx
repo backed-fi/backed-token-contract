@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { createTheme, ThemeProvider, CssBaseline, Container, Box, Typography } from '@mui/material';
 import '@fontsource/inter';
 import { TokensTable } from './components/TokensTable';
+import { useTokenPrices } from './hooks/useTokenPrices';
 import tokens from '../../scripts/config/sepolia-tokens.json';
 
 const theme = createTheme({
@@ -24,6 +25,9 @@ const theme = createTheme({
 });
 
 export default function App() {
+  const oracleAddresses = useMemo(() => tokens.map((t) => t.oracleAddress), []);
+  const prices = useTokenPrices(oracleAddresses);
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -33,10 +37,10 @@ export default function App() {
             Hackathon Tokens
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Deployed on Sepolia testnet &mdash; {tokens.length} tokens
+            Deployed on Sepolia testnet &mdash; {tokens.length} tokens &mdash; prices refresh every 30s
           </Typography>
         </Box>
-        <TokensTable tokens={tokens} />
+        <TokensTable tokens={tokens} prices={prices} />
       </Container>
     </ThemeProvider>
   );
