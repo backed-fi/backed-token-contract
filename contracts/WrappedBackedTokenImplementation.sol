@@ -344,6 +344,15 @@ contract WrappedBackedTokenImplementation is OwnableUpgradeable, ERC4626Upgradea
     }
 
     /**
+     * @dev Burns wrapped tokens by redeeming the underlying shares.
+     *
+     * @param shares The amount of wrapped token shares to burn
+     */
+    function burn(uint256 shares, address owner) external virtual returns (uint256) {
+        return redeem(shares, _msgSender(), owner);
+    }
+
+    /**
      * @dev Withdraw/redeem common workflow, adjusted to the fact, that wrapper token is keeping the shares of the underlying token and not the underlying tokens themselves,
      *  so it needs to transfer the shares to the user, and not do erc20 transfers as in a normal ERC4626 implementation.
      */
