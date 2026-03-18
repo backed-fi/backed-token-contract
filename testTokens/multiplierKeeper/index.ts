@@ -77,7 +77,7 @@ async function main() {
       const delta = randomBigInt(MAX_DELTA) + BigInt(1); // at least 1
       const next = current + delta;
 
-      const activationTime = Math.floor(Date.now() / 1000) + 3 * 60 * 60; // now + 3 hours
+      const activationTime = Math.floor(Date.now() / 1000) + 6 * 60 * 60; // now + 3 hours
 
       console.log(
         `[${token.symbol}] multiplier ${current} → ${next} (+${delta}), activates at ${new Date(activationTime * 1000).toISOString()}`
