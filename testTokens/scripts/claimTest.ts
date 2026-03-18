@@ -1,5 +1,5 @@
 import { ethers } from "hardhat";
-import { getEnv } from "./helpers/getEnv";
+import { getEnv } from "../../scripts/helpers/getEnv";
 
 const NVDA_ADDRESS = "0xE192289dDE12522620AaFb992b3043Cdc6463694";
 const tapAddress = getEnv("TOKEN_TAP_ADDRESS");

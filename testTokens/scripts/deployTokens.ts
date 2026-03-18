@@ -1,7 +1,7 @@
 /* eslint-disable camelcase */
 import { ethers } from "hardhat";
-import { BackedAutoFeeTokenFactory__factory } from "../typechain";
-import { getEnv } from "./helpers/getEnv";
+import { BackedAutoFeeTokenFactory__factory } from "../../typechain";
+import { getEnv } from "../../scripts/helpers/getEnv";
 import tokenConfigs from "./config/sepolia-tokens.json";
 
 const factoryAddress = getEnv("FACTORY_ADDRESS");

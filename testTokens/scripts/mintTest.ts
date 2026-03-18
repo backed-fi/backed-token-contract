@@ -1,6 +1,6 @@
 /* eslint-disable camelcase */
 import { ethers } from "hardhat";
-import { BackedAutoFeeTokenImplementation__factory } from "../typechain";
+import { BackedAutoFeeTokenImplementation__factory } from "../../typechain";
 import tokenConfigs from "./config/sepolia-tokens.json";
 
 const mint = async () => {

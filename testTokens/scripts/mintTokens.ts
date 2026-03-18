@@ -1,7 +1,7 @@
 /* eslint-disable camelcase */
 import { ethers } from "hardhat";
-import { BackedAutoFeeTokenImplementation__factory } from "../typechain";
-import { getEnv } from "./helpers/getEnv";
+import { BackedAutoFeeTokenImplementation__factory } from "../../typechain";
+import { getEnv } from "../../scripts/helpers/getEnv";
 import tokenConfigs from "./config/sepolia-tokens.json";
 
 const MINT_AMOUNT = ethers.utils.parseUnits("10000000", 18); // 10,000,000 tokens

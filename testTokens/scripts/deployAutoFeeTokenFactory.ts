@@ -1,6 +1,6 @@
 /* eslint-disable camelcase */
 import { ethers } from "hardhat";
-import { BackedAutoFeeTokenFactory__factory } from "../typechain";
+import { BackedAutoFeeTokenFactory__factory } from "../../typechain";
 
 const deploy = async () => {
   const [deployer] = await ethers.getSigners();
