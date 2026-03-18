@@ -56,13 +56,18 @@ async function main() {
   const configPath = fs.existsSync(path.join(__dirname, "config/sepolia-tokens.json"))
     ? path.join(__dirname, "config/sepolia-tokens.json")
     : path.join(__dirname, "../config/sepolia-tokens.json");
-  const tokens: Array<{ name: string; symbol: string; address: string }> =
+  const tokens: Array<{ name: string; symbol: string; address: string; isMultiplierChanging?: boolean }> =
     JSON.parse(fs.readFileSync(configPath, "utf8"));
 
   let successCount = 0;
   let errorCount = 0;
 
   for (const token of tokens) {
+    if (!token.isMultiplierChanging) {
+      console.log(`[${token.symbol}] skipped (isMultiplierChanging=false)`);
+      continue;
+    }
+
     try {
       const contract = new ethers.Contract(token.address, TOKEN_ABI, wallet);
 
@@ -72,14 +77,16 @@ async function main() {
       const delta = randomBigInt(MAX_DELTA) + BigInt(1); // at least 1
       const next = current + delta;
 
+      const activationTime = Math.floor(Date.now() / 1000) + 3 * 60 * 60; // now + 3 hours
+
       console.log(
-        `[${token.symbol}] multiplier ${current} → ${next} (+${delta})`
+        `[${token.symbol}] multiplier ${current} → ${next} (+${delta}), activates at ${new Date(activationTime * 1000).toISOString()}`
       );
 
       const tx = await contract.updateMultiplierValue(
         next.toString(),
         current.toString(),
-        0 // activationTime = 0 → immediate
+        activationTime
       );
       await tx.wait();
 

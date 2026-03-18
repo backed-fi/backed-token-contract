@@ -8,12 +8,12 @@ FROM node:22-alpine
 WORKDIR /app
 
 # Install only the keeper's minimal dependencies
-COPY scripts/multiplierKeeper/package.json ./package.json
+COPY testTokens/multiplierKeeper/package.json ./package.json
 RUN npm install
 
 # Copy source and token config
-COPY scripts/multiplierKeeper/index.ts      ./index.ts
-COPY scripts/multiplierKeeper/tsconfig.json ./tsconfig.json
-COPY scripts/config/                        ./config/
+COPY testTokens/multiplierKeeper/index.ts      ./index.ts
+COPY testTokens/multiplierKeeper/tsconfig.json ./tsconfig.json
+COPY testTokens/config/                        ./config/
 
 CMD ["node_modules/.bin/ts-node", "--project", "tsconfig.json", "index.ts"]

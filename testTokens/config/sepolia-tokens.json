@@ -1,82 +1,90 @@
 [
   {
-    "name": "Tesla xStock EthCC",
-    "symbol": "TSLAxcc",
+    "name": "Tesla xStock",
+    "symbol": "TSLAxt",
     "periodLength": 86400,
     "feePerPeriod": "0",
-    "type": "stock",
-    "address": "0x99Bd766816720349d2820DDa5dF6540E1f8E37e3",
+    "type": "Stock",
+    "address": "0x27c253BB83731D6323b3fb2B333DcF0C94b6031e",
     "startingPrice": 391.2,
-    "oracleAddress": "0x031963Cf8b88F11dA2E56D5386628077e2f9C30a"
+    "oracleAddress": "0x00432d616589A70E56B310f98E0F009C63C9a733",
+    "isMultiplierChanging": false
   },
   {
-    "name": "NVIDIA xStock EthCC",
-    "symbol": "NVDAxcc",
+    "name": "NVIDIA xStock",
+    "symbol": "NVDAxt",
     "periodLength": 86400,
     "feePerPeriod": "0",
-    "type": "stock",
-    "address": "0xE192289dDE12522620AaFb992b3043Cdc6463694",
+    "type": "Stock",
+    "address": "0xaDfdf3EC7dC440931D363DA1D97b8Ee0479Dc409",
     "startingPrice": 180.25,
-    "oracleAddress": "0x0953fd742845Ed23E54984aA4F7621A5256f1FE5"
+    "oracleAddress": "0x8864C76c5681DEDb9955e28B0bcF2b4025495ad4",
+    "isMultiplierChanging": true
   },
   {
-    "name": "Alphabet xStock EthCC",
-    "symbol": "GOOGLxcc",
+    "name": "Alphabet xStock",
+    "symbol": "GOOGLxt",
     "periodLength": 86400,
     "feePerPeriod": "0",
-    "type": "stock",
-    "address": "0xA2bfeA4886dC5419d340e33eAa8C76ea6e0EB8d8",
+    "type": "Stock",
+    "address": "0x8A36935c0F5137ceA736F28886ef8F480a1a1727",
     "startingPrice": 302.28,
-    "oracleAddress": "0x92eD04d68E10B999719731f9E9B1E836812440f0"
+    "oracleAddress": "0x464e9ccE31a7ccd3d5BbAa42b96fE123B3C80f4c",
+    "isMultiplierChanging": true
   },
   {
-    "name": "Apple xStock EthCC",
-    "symbol": "AAPLxcc",
+    "name": "Apple xStock",
+    "symbol": "AAPLxt",
     "periodLength": 86400,
     "feePerPeriod": "0",
-    "type": "stock",
-    "address": "0x1B5E95321862A4b98bF20C2724a0D0dAa64E07D0",
+    "type": "Stock",
+    "address": "0x6DEfC6061Cafa52d96FAf60AE7A7D727a75C3Bdb",
     "startingPrice": 250.12,
-    "oracleAddress": "0x89440b5b376f7E1A6A208Bf45D226BE4F5722a8F"
+    "oracleAddress": "0xFDae0F2a75281735412fD27456cb09287A2F0Fb7",
+    "isMultiplierChanging": true
   },
   {
-    "name": "SP500 xStock EthCC",
-    "symbol": "SPYxcc",
+    "name": "SP500 xStock",
+    "symbol": "SPYxt",
     "periodLength": 86400,
     "feePerPeriod": "0",
-    "type": "etf",
-    "address": "0x83e908c8B023d36ED0F32FD449f8752ba5020b9b",
+    "type": "ETF",
+    "address": "0x7312c657e8c73c09dD282c5E7cBdDf43ace25cFc",
     "startingPrice": 662.29,
-    "oracleAddress": "0xC1a4FB0f5a7E3F0895Ef1CCE402757e7c9f1888C"
+    "oracleAddress": "0xcE3bFFD233316EAade4B493633F1CF07f6Bc18E0",
+    "isMultiplierChanging": true
   },
   {
-    "name": "TBLL xStock EthCC",
-    "symbol": "TBLLxcc",
+    "name": "TBLL xStock",
+    "symbol": "TBLLxt",
     "periodLength": 86400,
     "feePerPeriod": "0",
-    "type": "etf",
-    "address": "0x6a33A6d38DAB7Adf3D0d0DAccDe4d807291e9839",
+    "type": "ETF",
+    "address": "0x6b4aDe3cAa2bEa98CEbe7019E09d69c23CD11C42",
     "startingPrice": 105.7,
-    "oracleAddress": "0x97AD8fc4505d90FaEaf9c74506d04271fC40d0E9"
+    "oracleAddress": "0xF593C4bE7de990b491bbb4E052E649728bA34815",
+    "isMultiplierChanging": true
   },
   {
-    "name": "Gold xStock EthCC",
-    "symbol": "GLDxcc",
+    "name": "Gold xStock",
+    "symbol": "GLDxt",
     "periodLength": 86400,
     "feePerPeriod": "0",
-    "type": "commodity",
-    "address": "0x29C3e085d8535E1fC19949c656259f088e8f2CD1",
+    "type": "Commodity",
+    "address": "0xeae1f4476fDBD4FaED890568b1Cf69F372d72462",
     "startingPrice": 460.84,
-    "oracleAddress": "0x19e74f44d4736106f4D764e6De29257943734592"
+    "oracleAddress": "0x2dfB167a418D768CAD6A855d28b3fB8F13b74571",
+    "isMultiplierChanging": false
   },
   {
-    "name": "iShares Silver Trust xStock EthCC",
-    "symbol": "SLVxcc",
+    "name": "iShares Silver Trust xStock",
+    "symbol": "SLVxt",
     "periodLength": 86400,
     "feePerPeriod": "0",
-    "type": "commodity",
-    "address": "0xc4E52438b541862c46640BFCe5Cc903Ec5837259",
+    "type": "Commodity",
+    "address": "0x732C084288F3E7eF4D0b6Cdb6bdcbFd072DfEb92",
     "startingPrice": 72.69,
-    "oracleAddress": "0x4b65CDf864205ec5DD317491d9330FF635a543f6"
+    "oracleAddress": "0xF50b14bE50E17785Fd85e8D62654E85f8F7EFEe3",
+    "isMultiplierChanging": false
   }
 ]

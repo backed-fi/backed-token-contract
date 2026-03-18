@@ -17,13 +17,13 @@ async function main() {
   const [deployer] = await ethers.getSigners();
   console.log("Deploying mock oracles with account:", deployer.address);
 
-  const configPath = path.join(__dirname, "config", "sepolia-tokens.json");
+  const configPath = path.join(__dirname, "../config", "sepolia-tokens.json");
   const tokens: TokenConfig[] = JSON.parse(fs.readFileSync(configPath, "utf8"));
 
   const MockBackedOracle = await ethers.getContractFactory("MockBackedOracle");
 
   for (const token of tokens) {
-    const isTrending = token.type === "etf";
+    const isTrending = token.type === "ETF";
     // Convert USD price to 8-decimal fixed point integer
     const startingPrice = ethers.BigNumber.from(
       Math.round(token.startingPrice * 1e8)

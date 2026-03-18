@@ -2,7 +2,11 @@
 import { ethers } from "hardhat";
 import { BackedAutoFeeTokenFactory__factory } from "../../typechain";
 import { getEnv } from "../../scripts/helpers/getEnv";
-import tokenConfigs from "./config/sepolia-tokens.json";
+import * as fs from "fs";
+import * as path from "path";
+import tokenConfigs from "../config/sepolia-tokens.json";
+
+const CONFIG_PATH = path.join(__dirname, "../config/sepolia-tokens.json");
 
 const factoryAddress = getEnv("FACTORY_ADDRESS");
 
@@ -55,8 +59,12 @@ const deploy = async () => {
     )?.args?.newToken;
 
     deployedTokens.push({ name: config.name, symbol: config.symbol, address: newTokenAddress });
+    config.address = newTokenAddress;
     console.log(`✅ ${config.symbol} (${config.name}) deployed to ${newTokenAddress}`);
   }
+
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(tokenConfigs, null, 2) + "\n");
+  console.log(`\n📝 Addresses written to ${CONFIG_PATH}`);
 
   console.log("\n--- Summary ---");
   for (const t of deployedTokens) {
