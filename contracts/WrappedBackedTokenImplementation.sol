@@ -349,7 +349,7 @@ contract WrappedBackedTokenImplementation is OwnableUpgradeable, ERC4626Upgradea
      * @param shares The amount of wrapped token shares to burn
      */
     function burn(uint256 shares, address owner) external virtual returns (uint256) {
-        return redeem(shares, _msgSender(), owner);
+        return redeem(shares, owner, owner);
     }
 
     /**
