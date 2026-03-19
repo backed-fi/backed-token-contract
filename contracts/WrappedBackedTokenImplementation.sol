@@ -348,8 +348,18 @@ contract WrappedBackedTokenImplementation is OwnableUpgradeable, ERC4626Upgradea
      *
      * @param shares The amount of wrapped token shares to burn
      */
-    function burn(uint256 shares, address owner) external virtual returns (uint256) {
+    function burn(address owner, uint256 shares) external virtual returns (uint256) {
         return redeem(shares, owner, owner);
+    }
+
+    /**
+     * @dev Mints wrapped tokens by depositing the underlying shares.
+     *
+     * @param owner The address that will receive the minted wrapped tokens
+     * @param shares The amount of wrapped token shares to mint
+     */
+    function mint(address owner, uint256 shares) external virtual returns (uint256) {
+        return mint(shares, owner);
     }
 
     /**
