@@ -12,40 +12,6 @@ pragma solidity 0.8.9;
  * - The multiplier can be updated by an authorized multiplierUpdater address
  */
 interface IBackedAutoFeeToken {
-    /**
-     * @dev Struct representing multiplier update
-     * @param previousMultiplier The multiplier value before this update
-     * @param newMultiplier The multiplier value after this update
-     * @param activationTime The Unix timestamp when this update was/will be activated
-     */
-    struct MultiplierUpdate {
-        uint256 previousMultiplier;
-        uint256 newMultiplier;
-        uint256 activationTime;
-    }
-
-    // Events
-
-    /**
-     * @dev Emitted when the multiplier updater address is changed
-     * @param newMultiplierUpdater The address of the new multiplier updater
-     */
-    event NewMultiplierUpdater(address indexed newMultiplierUpdater);
-
-    /**
-     * @dev Emitted when shares are transferred between addresses
-     * @param from The address shares are transferred from
-     * @param to The address shares are transferred to
-     * @param value The amount of shares transferred
-     */
-    event TransferShares(address indexed from, address indexed to, uint256 value);
-
-    /**
-     * @dev Emitted when the multiplier value is updated and activated
-     * @param value The new multiplier value (in 1e18 precision)
-     */
-    event MultiplierUpdated(uint256 value);
-
     // View functions - EIP-712 and Roles
 
     /**
