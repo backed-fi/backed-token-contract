@@ -46,13 +46,6 @@ interface IBackedAutoFeeToken {
      */
     event MultiplierUpdated(uint256 value);
 
-    /**
-     * @dev Emitted when a multiplier is scheduled for future activation
-     * @param newMultiplier The new multiplier value that will be activated (in 1e18 precision)
-     * @param activationTime The Unix timestamp when the multiplier will become active
-     */
-    event MultiplierScheduled(uint256 newMultiplier, uint256 activationTime);
-
     // View functions - EIP-712 and Roles
 
     /**
@@ -161,21 +154,6 @@ interface IBackedAutoFeeToken {
      * @return The equivalent amount of tokens
      */
     function getUnderlyingAmountByShares(uint256 _sharesAmount) external view returns (uint256);
-
-    /**
-     * @dev Returns the length of the multiplier updates array
-     * @return The number of multiplier updates stored
-     */
-    function multiplierUpdatesLength() external view returns (uint256);
-
-    /**
-     * @dev Returns a specific scheduled multiplier update by index
-     * @param index The index in the myyultiplierUpdates array
-     * @return previousMultiplier The multiplier value before this update
-     * @return newMultiplier The multiplier value after this update
-     * @return activationTime The Unix timestamp when this update was/will be activated
-     */
-    function multiplierUpdates(uint256 index) external view returns (uint256 previousMultiplier, uint256 newMultiplier, uint256 activationTime);
 
     // State-changing functions - Share Transfers
 

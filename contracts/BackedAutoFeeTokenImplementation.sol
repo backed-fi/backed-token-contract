@@ -37,7 +37,6 @@
 pragma solidity 0.8.9;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "./interfaces/IBackedAutoFeeToken.sol";
 import "./BackedTokenImplementation.sol";
 
 /**
@@ -52,8 +51,7 @@ import "./BackedTokenImplementation.sol";
  *
  */
 
-contract BackedAutoFeeTokenImplementation is BackedTokenImplementation, IBackedAutoFeeToken {
-    
+contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     // Calculating the Delegated Transfer Shares typehash:
     bytes32 constant public DELEGATED_TRANSFER_SHARES_TYPEHASH =
         keccak256(
@@ -89,7 +87,6 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation, IBackedA
     uint256 public newMultiplierNonce;
     uint256 public newMultiplier;
     uint256 public newMultiplierActivationTime;
-    MultiplierUpdate[] public multiplierUpdates;
 
     function multiplierNonce() external view returns (uint256) {
         if(block.timestamp >= newMultiplierActivationTime) {
@@ -97,6 +94,29 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation, IBackedA
         }
         return lastMultiplierNonce;
     }
+    // Events:
+
+    /**
+     * @dev Emitted when multiplier updater is changed
+     */
+    event NewMultiplierUpdater(address indexed newMultiplierUpdater);
+
+    /**
+     * @dev Emitted when `value` token shares are moved from one account (`from`) to
+     * another (`to`).
+     *
+     * Note that `value` may be zero.
+     */
+    event TransferShares(
+        address indexed from,
+        address indexed to,
+        uint256 value
+    );
+
+    /**
+     * @dev Emitted when multiplier value is updated
+     */
+    event MultiplierUpdated(uint256 value);
 
     // Modifiers:
 
@@ -177,25 +197,6 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation, IBackedA
         newMultiplierActivationTime = 0;
     }
 
-    function initialize_v4(
-        MultiplierUpdate [] calldata _pastMultipliersUpdates
-    ) external virtual {
-        require(multiplierUpdates.length == 0, "BackedAutoFeeTokenImplementation v4 already initialized");
-        multiplierUpdates.push(MultiplierUpdate({
-            previousMultiplier: 1e18,
-            newMultiplier: 1e18,
-            activationTime: 0
-        }));
-        for (uint i = 0; i < _pastMultipliersUpdates.length; i++) {    
-            require(_pastMultipliersUpdates[i].previousMultiplier > 0);
-            multiplierUpdates.push(MultiplierUpdate({
-                previousMultiplier: _pastMultipliersUpdates[i].previousMultiplier,
-                newMultiplier: _pastMultipliersUpdates[i].newMultiplier,
-                activationTime: _pastMultipliersUpdates[i].activationTime
-            }));
-        }
-    }
-
     function _initialize_auto_fee(
         uint256 _periodLength,
         uint256 _lastTimeFeeApplied,
@@ -212,11 +213,6 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation, IBackedA
         periodLength = _periodLength;
         lastTimeFeeApplied = _lastTimeFeeApplied;
         feePerPeriod = _feePerPeriod;
-        multiplierUpdates.push(MultiplierUpdate({
-            previousMultiplier: 1e18,
-            newMultiplier: 1e18,
-            activationTime: 0
-        }));
     }
 
     /**
@@ -286,13 +282,6 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation, IBackedA
     ) external view returns (uint256) {
         (uint256 currentMultiplier, ,) = getCurrentMultiplier();
         return _getUnderlyingAmountByShares(_sharesAmount, currentMultiplier);
-    }
-
-    /**
-     * @return Length of scheduled multipliers updates array
-     */
-    function multiplierUpdatesLength() external view returns (uint256) {
-        return multiplierUpdates.length;
     }
 
     /**
@@ -427,7 +416,6 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation, IBackedA
         uint256 pendingNewMultiplierActivationTime
     ) public onlyMultiplierUpdater updateMultiplier onlyUpdatedMultiplier(oldMultiplier) {
         _updateMultiplier(pendingNewMultiplier, lastMultiplierNonce + 1, pendingNewMultiplierActivationTime);
-        _storeScheduledMultiplierUpdate(oldMultiplier, pendingNewMultiplier, pendingNewMultiplierActivationTime);
     }
 
     /**
@@ -445,27 +433,6 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation, IBackedA
         uint256 pendingNewMultiplierActivationTime
     ) external onlyMultiplierUpdater updateMultiplier onlyUpdatedMultiplier(oldMultiplier) onlyNewerMultiplierNonce(newMultiplierNonce){
         _updateMultiplier(newMultiplier, newMultiplierNonce, pendingNewMultiplierActivationTime);
-        _storeScheduledMultiplierUpdate(oldMultiplier, newMultiplier, pendingNewMultiplierActivationTime);
-    }
-
-    /**
-     * Stores scheduled multiplier update
-     */
-    function _storeScheduledMultiplierUpdate(
-        uint256 _previousMultiplierValue,
-        uint256 _multiplierValue,
-        uint256 _multiplierActivationTime
-    ) internal {
-        // If previously scheduled multiplier update has activation time in the future, override it, as there can be only one scheduled multiplier update at a time and new one overrides previously scheduled one.
-        if(multiplierUpdates[multiplierUpdates.length - 1].activationTime > block.timestamp) {
-            multiplierUpdates.pop();
-        }
-
-        multiplierUpdates.push(MultiplierUpdate({
-            previousMultiplier: _previousMultiplierValue,
-            newMultiplier: _multiplierValue,
-            activationTime: _multiplierActivationTime > block.timestamp ? _multiplierActivationTime : block.timestamp
-        }));
     }
 
     /**
@@ -649,7 +616,6 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation, IBackedA
 
         if(pendingNewMultiplierActivationTime > block.timestamp) {
             newMultiplierActivationTime = pendingNewMultiplierActivationTime;
-            emit MultiplierScheduled(pendingNewMultiplier, pendingNewMultiplierActivationTime);
             // We don't need to update lastMultiplier and lastMultiplierNonce here, as they will be updated in updateMultiplier modifier when calling updateMultiplier method
         } else {
             newMultiplierActivationTime = 0;
