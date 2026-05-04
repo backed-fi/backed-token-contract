@@ -88,7 +88,7 @@ contract WrappedBackedTokenImplementation is OwnableUpgradeable, ERC4626Upgradea
 
     // constructor, call initializer to lock the implementation instance.
     constructor () {
-        initialize("Wrapped Backed Token Implementation", "wBTI", address(0x0000000000000000000000000000000000000000));
+        _disableInitializers();
     }
 
     function initialize(string memory name_, string memory symbol_, address underlying_) public initializer {
