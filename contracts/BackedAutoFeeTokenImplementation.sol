@@ -38,6 +38,7 @@ pragma solidity 0.8.9;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "./BackedTokenImplementation.sol";
+import "./interfaces/IBackedAutoFeeToken.sol";
 
 /**
  * @dev
@@ -51,7 +52,7 @@ import "./BackedTokenImplementation.sol";
  *
  */
 
-contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
+contract BackedAutoFeeTokenImplementation is BackedTokenImplementation, IBackedAutoFeeToken {
     // Calculating the Delegated Transfer Shares typehash:
     bytes32 constant public DELEGATED_TRANSFER_SHARES_TYPEHASH =
         keccak256(
@@ -164,7 +165,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
     function initialize(
         string memory name_,
         string memory symbol_
-    ) public virtual override {
+    ) public virtual override(BackedTokenImplementation, IBackedToken) {
         super.initialize(name_, symbol_);
         _initialize_auto_fee(24 * 3600, block.timestamp, 0);
     }
@@ -213,6 +214,13 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation {
         periodLength = _periodLength;
         lastTimeFeeApplied = _lastTimeFeeApplied;
         feePerPeriod = _feePerPeriod;
+    }
+
+    /**
+     * @inheritdoc IERC20MetadataUpgradeable
+     */
+    function decimals() public view virtual override(BackedTokenImplementation, IBackedToken) returns (uint8) {
+        return ERC20Upgradeable.decimals();
     }
 
     /**
