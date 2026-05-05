@@ -227,11 +227,41 @@ describe("BackedAutoFeeTokenImplementation", function () {
         expect(await tokenV2Upgraded.newMultiplierActivationTime()).to.be.equal(0);
       });
     });
+
+    describe('When called on a proxy without v3 fields populated', () => {
+      // Simulate a real v2 -> v3 upgrade by upgrading a v1 proxy directly to the v3
+      // implementation, leaving the new* storage slots at their zero default.
+      let tokenFreshV3: BackedAutoFeeTokenImplementation;
+
+      cacheBeforeEach(async () => {
+        const v1Implementation = await new BackedTokenImplementation__factory(owner.signer).deploy();
+        const tokenProxy = await new BackedTokenProxy__factory(owner.signer).deploy(
+          v1Implementation.address,
+          proxyAdmin.address,
+          v1Implementation.interface.encodeFunctionData('initialize', [tokenName, tokenSymbol])
+        );
+
+        const v3Implementation = await new BackedAutoFeeTokenImplementation__factory(owner.signer).deploy();
+        await proxyAdmin.upgrade(tokenProxy.address, v3Implementation.address);
+
+        tokenFreshV3 = BackedAutoFeeTokenImplementation__factory.connect(tokenProxy.address, owner.signer);
+      });
+
+      it("Should populate newMultiplier and newMultiplierNonce from last* values", async function () {
+        expect(await tokenFreshV3.newMultiplier()).to.be.equal(0);
+
+        await tokenFreshV3.initialize_v3();
+
+        expect(await tokenFreshV3.newMultiplier()).to.be.equal(await tokenFreshV3.lastMultiplier());
+        expect(await tokenFreshV3.newMultiplierNonce()).to.be.equal(await tokenFreshV3.lastMultiplierNonce());
+        expect(await tokenFreshV3.newMultiplierActivationTime()).to.be.equal(0);
+      });
+    });
   })
 
   describe('#getCurrentMultiplier', () => {
-    describe('when time moved by 365 days forward', () => {
-      const periodsPassed = 365;
+    describe('when time moved forward', () => {
+      const periodsPassed = 7;
       let preMultiplier: BigNumber;
       let preMultiplierNonce: BigNumber;
       describe('and fee is set to non-zero value', () => {
@@ -387,8 +417,8 @@ describe("BackedAutoFeeTokenImplementation", function () {
     })
   })
   describe('#updateMultiplier', () => {
-    describe('when time moved by 365 days forward', () => {
-      const periodsPassed = 365;
+    describe('when time moved forward', () => {
+      const periodsPassed = 7;
       const baseMintedAmount = ethers.BigNumber.from(10).pow(18);
       let mintedShares: BigNumber;
       cacheBeforeEach(async () => {
@@ -505,8 +535,14 @@ describe("BackedAutoFeeTokenImplementation", function () {
       });
 
       describe('#balanceOf', () => {
-        it('Should decrease balance of the user by fee accrued in 365 days', async () => {
-          expect((await token.balanceOf(owner.address)).sub(baseMintedAmount.mul(annualFee * 100).div(100)).abs()).to.lte(
+        it('Should decrease balance of the user by fee accrued', async () => {
+          const feePerPeriod = await token.feePerPeriod();
+          let cumMult = ethers.BigNumber.from(10).pow(18);
+          for (let i = 0; i < periodsPassed; i++) {
+            cumMult = cumMult.mul(ethers.BigNumber.from(10).pow(18).sub(feePerPeriod)).div(ethers.BigNumber.from(10).pow(18));
+          }
+          const expectedBalance = baseMintedAmount.mul(cumMult).div(ethers.BigNumber.from(10).pow(18));
+          expect((await token.balanceOf(owner.address)).sub(expectedBalance).abs()).to.lte(
             BigNumber.from(10).pow(3)
           )
         })
@@ -514,14 +550,22 @@ describe("BackedAutoFeeTokenImplementation", function () {
 
       describe('#getSharesByUnderlyingAmount', () => {
         it('Should increase amount of shares neeeded for given underlying amount', async () => {
-          const amount = 1000;
-          expect((await token.getSharesByUnderlyingAmount(amount))).to.eq(ethers.BigNumber.from(amount / annualFee))
+          const amount = ethers.BigNumber.from(10).pow(15);
+          const { currentMultiplier } = await token.getCurrentMultiplier();
+          const expectedShares = amount.mul(ethers.BigNumber.from(10).pow(18)).div(currentMultiplier);
+          expect((await token.getSharesByUnderlyingAmount(amount))).to.eq(expectedShares)
         })
       });
 
       describe('#totalSupply', () => {
-        it('Should decrease total supply of the token by the fee accrued in 365 days', async () => {
-          expect((await token.totalSupply()).sub(baseMintedAmount.mul(annualFee * 100).div(100)).abs()).to.lte(
+        it('Should decrease total supply of the token by the fee accrued', async () => {
+          const feePerPeriod = await token.feePerPeriod();
+          let cumMult = ethers.BigNumber.from(10).pow(18);
+          for (let i = 0; i < periodsPassed; i++) {
+            cumMult = cumMult.mul(ethers.BigNumber.from(10).pow(18).sub(feePerPeriod)).div(ethers.BigNumber.from(10).pow(18));
+          }
+          const expectedSupply = baseMintedAmount.mul(cumMult).div(ethers.BigNumber.from(10).pow(18));
+          expect((await token.totalSupply()).sub(expectedSupply).abs()).to.lte(
             BigNumber.from(10).pow(3)
           )
         })
@@ -655,8 +699,8 @@ describe("BackedAutoFeeTokenImplementation", function () {
           await expect(subject()).to.be.reverted;
         })
 
-        describe('when time moved by 365 days forward', () => {
-          const periodsPassed = 365;
+        describe('when time moved forward', () => {
+          const periodsPassed = 7;
           cacheBeforeEach(async () => {
             await helpers.time.setNextBlockTimestamp(baseTime + periodsPassed * accrualPeriodLength);
             await helpers.mine()
