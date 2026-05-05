@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.9;
 
-import '../SanctionsList.sol';
-import './IBackedToken.sol';
+import "../SanctionsList.sol";
+import "./IBackedToken.sol";
 
 /**
  * @title IBackedAutoFeeToken
