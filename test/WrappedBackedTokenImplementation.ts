@@ -112,7 +112,6 @@ describe("WrappedBackedTokenImplementation", function () {
         ]
       )
     )).address, owner.signer)
-    await wrapped.setSanctionsList(sanctionsList.address);
 
 
     // Chain Id
@@ -759,44 +758,12 @@ describe("WrappedBackedTokenImplementation", function () {
     await expect(
       wrapped.connect(tmpAccount.signer).setPauser(tmpAccount.address)
     ).to.be.revertedWith("Ownable: caller is not the owner");
-
-    await expect(
-      wrapped.connect(tmpAccount.signer).setSanctionsList(tmpAccount.address)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
   });
 
-  it("Set SanctionsList", async function () {
-    // Deploy a new Sanctions List:
-    const sanctionsList2: SanctionsListMock = await (
-      await ethers.getContractFactory("SanctionsListMock", blacklister.signer)
-    ).deploy();
-    await sanctionsList2.deployed();
-
-    // Test current Sanctions List:
-    expect(await wrapped.sanctionsList()).to.equal(sanctionsList.address);
-
-    // Change SanctionsList
-    const receipt = await (
-      await wrapped.setSanctionsList(sanctionsList2.address)
-    ).wait();
-    expect(receipt.events?.[0].event).to.equal("NewSanctionsList");
-    expect(receipt.events?.[0].args?.[0]).to.equal(sanctionsList2.address);
-    expect(await wrapped.sanctionsList()).to.equal(sanctionsList2.address);
-  });
-
-  it("Try to set SanctionsList from wrong address", async function () {
-    await expect(
-      wrapped.connect(tmpAccount.signer).setSanctionsList(tmpAccount.address)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
-  });
-
-  it("Try to set SanctionsList to a contract not following the interface", async function () {
-    await expect(
-      wrapped.connect(owner.signer).setSanctionsList(wrapped.address)
-    ).to.be.revertedWith(
-      "Transaction reverted: function selector was not recognized and there's no fallback function"
-    );
-  });
+  // Sanctions list management has moved to the underlying token; the wrapped
+  // contract reads from `IBackedToken(asset()).sanctionsList()`. So the
+  // wrapper-side setters/getters no longer exist and the legacy
+  // "Set SanctionsList" tests have been removed.
 
   it("Check blocking of address in the Sanctions List", async function () {
     await token.approve(wrapped.address, 200);
@@ -855,7 +822,6 @@ describe("WrappedBackedTokenImplementation", function () {
     await wrapped.deposit(100, tmpAccount.address);
     await wrapped.deposit(100, burner.address);
     await wrapped.setPauser(pauser.address);
-    await wrapped.setSanctionsList(sanctionsList.address);
 
     // Sanction 0x0 address, and still mint:
     await sanctionsList.addToSanctionsList([ethers.constants.AddressZero]);
