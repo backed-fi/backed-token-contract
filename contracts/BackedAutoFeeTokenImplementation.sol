@@ -53,7 +53,6 @@ import "./BackedTokenImplementation.sol";
  */
 
 contract BackedAutoFeeTokenImplementation is BackedTokenImplementation, IBackedAutoFeeToken {
-    
     // Calculating the Delegated Transfer Shares typehash:
     bytes32 constant public DELEGATED_TRANSFER_SHARES_TYPEHASH =
         keccak256(
@@ -89,6 +88,21 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation, IBackedA
     uint256 public newMultiplierNonce;
     uint256 public newMultiplier;
     uint256 public newMultiplierActivationTime;
+
+    /**
+     * @dev Append-only log of *explicit* multiplier updates submitted via
+     * `updateMultiplierValue` / `updateMultiplierWithNonce`.
+     *
+     * Index 0 is a genesis sentinel `{1e18, 1e18, 0}` so that
+     * `_storeScheduledMultiplierUpdate` can safely read `length - 1`.
+     *
+     * Pending future-dated entries are overridden in place: when a new
+     * explicit update is submitted while the previous one is still
+     * scheduled (activationTime > block.timestamp), the previous entry is
+     * popped before the new one is appended. The corresponding
+     * `MultiplierScheduled` event from the popped entry remains on chain;
+     * the array does not retain it.
+     */
     MultiplierUpdate[] public multiplierUpdates;
 
     function multiplierNonce() external view returns (uint256) {
@@ -186,8 +200,8 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation, IBackedA
             newMultiplier: 1e18,
             activationTime: 0
         }));
-        for (uint i = 0; i < _pastMultipliersUpdates.length; i++) {    
-            require(_pastMultipliersUpdates[i].previousMultiplier > 0);
+        for (uint i = 0; i < _pastMultipliersUpdates.length; i++) {
+            require(_pastMultipliersUpdates[i].previousMultiplier > 0, "BackedAutoFeeTokenImplementation: previousMultiplier cannot be zero");
             multiplierUpdates.push(MultiplierUpdate({
                 previousMultiplier: _pastMultipliersUpdates[i].previousMultiplier,
                 newMultiplier: _pastMultipliersUpdates[i].newMultiplier,
@@ -449,23 +463,42 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation, IBackedA
     }
 
     /**
-     * Stores scheduled multiplier update
+     * @dev Stores an explicit multiplier update in `multiplierUpdates`.
+     *
+     * If the previously stored entry is still pending (activationTime in the
+     * future), it is overwritten in place — only one scheduled update can be
+     * pending at a time — and a `MultiplierScheduleOverridden` event is
+     * emitted so off-chain consumers can reconcile the now-stale
+     * `MultiplierScheduled` event for the discarded entry.
+     *
+     * Tolerates an empty array (the not-yet-migrated state between a v4
+     * implementation upgrade and an `initialize_v4` call) by falling through
+     * to the append path.
      */
     function _storeScheduledMultiplierUpdate(
         uint256 _previousMultiplierValue,
         uint256 _multiplierValue,
         uint256 _multiplierActivationTime
     ) internal {
-        // If previously scheduled multiplier update has activation time in the future, override it, as there can be only one scheduled multiplier update at a time and new one overrides previously scheduled one.
-        if(multiplierUpdates[multiplierUpdates.length - 1].activationTime > block.timestamp) {
-            multiplierUpdates.pop();
-        }
-
-        multiplierUpdates.push(MultiplierUpdate({
+        MultiplierUpdate memory entry = MultiplierUpdate({
             previousMultiplier: _previousMultiplierValue,
             newMultiplier: _multiplierValue,
             activationTime: _multiplierActivationTime > block.timestamp ? _multiplierActivationTime : block.timestamp
-        }));
+        });
+
+        uint256 len = multiplierUpdates.length;
+        if (len > 0 && multiplierUpdates[len - 1].activationTime > block.timestamp) {
+            MultiplierUpdate memory overridden = multiplierUpdates[len - 1];
+            multiplierUpdates[len - 1] = entry;
+            emit MultiplierScheduleOverridden(
+                overridden.newMultiplier,
+                overridden.activationTime,
+                entry.newMultiplier,
+                entry.activationTime
+            );
+        } else {
+            multiplierUpdates.push(entry);
+        }
     }
 
     /**
