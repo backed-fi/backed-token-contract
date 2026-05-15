@@ -1341,10 +1341,10 @@ describe("WrappedBackedTokenImplementation", function () {
   });
 
   describe('Rounding math at multiplier = 0.51x', () => {
-    // The wrapper overrides _convertToShares/_convertToAssets and previewWithdraw,
-    // but NOT previewMint — so the active rounding directions are:
+    // The wrapper overrides _convertToShares/_convertToAssets, previewWithdraw,
+    // and previewMint — so the active rounding directions are:
     //   previewDeposit  -> _convertToShares Down  (OZ default)
-    //   previewMint     -> _convertToAssets Up    (OZ default — NOT overridden)
+    //   previewMint     -> _convertToAssets Down  (wrapper override; non-standard)
     //   previewWithdraw -> _convertToShares Down  (wrapper override; non-standard)
     //   previewRedeem   -> _convertToAssets Down  (OZ default)
     // The wrapper's _convertToShares/_convertToAssets ignore totalSupply and use
@@ -1353,14 +1353,15 @@ describe("WrappedBackedTokenImplementation", function () {
     //   assets = s * multiplier / 1e18   (rounding from caller)
     // At multiplier = 0.51e18 these reduce to:
     //   previewDeposit(a)  = previewWithdraw(a) = floor(a * 100 / 51)
-    //   previewMint(s)     = ceil (s * 51 / 100)         (Up — costs more)
-    //   previewRedeem(s)   = floor(s * 51 / 100)         (Down — pays less)
+    //   previewMint(s)     = previewRedeem(s)   = floor(s * 51 / 100)
     //
-    // The underlying BackedAutoFeeToken stores in shares and floors both
-    // amount->shares (on transfer) and shares->amount (on balanceOf), so the
-    // observed balanceOf delta of a transfer is a non-trivial composition of
-    // the wrapper's preview math and the underlying's flooring. The expected
-    // values in these tests were captured directly from the contract.
+    // Because the wrapper's _deposit/_withdraw use transferShares directly (not
+    // the assets value), the underlying balance delta observed by the owner is
+    // independent of the preview's rounding direction. The underlying token
+    // stores in shares and floors both amount->shares (on transfer) and
+    // shares->amount (on balanceOf), so the observed balanceOf delta is a
+    // non-trivial composition of the share count moved and the underlying's
+    // flooring. Expected values below were captured directly from the contract.
 
     const ONE = BigNumber.from(10).pow(18);
     const MULTIPLIER = ONE.mul(51).div(100); // 0.51e18
@@ -1395,14 +1396,14 @@ describe("WrappedBackedTokenImplementation", function () {
         }
       });
 
-      it("previewMint rounds Up (ceil) — Up-Down split with previewRedeem", async () => {
-        // previewMint = ceil(s * 51 / 100); previewRedeem = floor(s * 51 / 100)
+      it("previewMint rounds Down (floor) — wrapper override matches previewRedeem", async () => {
+        // previewMint = floor(s * 51 / 100), same as previewRedeem
         expect(await wrapped.previewMint(0)).to.equal(0);
-        expect(await wrapped.previewMint(1)).to.equal(1);     // ceil(0.51)
-        expect(await wrapped.previewMint(50)).to.equal(26);   // ceil(25.5)
-        expect(await wrapped.previewMint(99)).to.equal(51);   // ceil(50.49)
+        expect(await wrapped.previewMint(1)).to.equal(0);     // floor(0.51)
+        expect(await wrapped.previewMint(50)).to.equal(25);   // floor(25.5)
+        expect(await wrapped.previewMint(99)).to.equal(50);   // floor(50.49)
         expect(await wrapped.previewMint(100)).to.equal(51);  // exact
-        expect(await wrapped.previewMint(101)).to.equal(52);  // ceil(51.51)
+        expect(await wrapped.previewMint(101)).to.equal(51);  // floor(51.51)
       });
 
       it("previewRedeem rounds Down (floor)", async () => {
@@ -1414,12 +1415,12 @@ describe("WrappedBackedTokenImplementation", function () {
         expect(await wrapped.previewRedeem(101)).to.equal(51);  // floor(51.51)
       });
 
-      it("previewMint vs previewRedeem differ by exactly 1 wei when not divisible", async () => {
-        // 100 shares * 0.51 = 51 exactly -> Up == Down
-        expect((await wrapped.previewMint(100)).sub(await wrapped.previewRedeem(100))).to.equal(0);
-        // 1 share -> Up=1, Down=0
-        expect((await wrapped.previewMint(1)).sub(await wrapped.previewRedeem(1))).to.equal(1);
-        expect((await wrapped.previewMint(101)).sub(await wrapped.previewRedeem(101))).to.equal(1);
+      it("previewMint always equals previewRedeem (both round Down)", async () => {
+        for (const s of [0, 1, 50, 99, 100, 101]) {
+          expect(await wrapped.previewMint(s), `previewMint(${s})`).to.equal(
+            await wrapped.previewRedeem(s)
+          );
+        }
       });
     });
 
@@ -1567,14 +1568,14 @@ describe("WrappedBackedTokenImplementation", function () {
         expect((await token.balanceOf(owner.address)).sub(ownerAssetsBefore)).to.equal(51);
       });
 
-      it("inexact: redeem(50) burns 50 shares and returns 24 underlying (preview=25, then -1 from underlying flooring)", async () => {
+      it("inexact: redeem(50) burns 50 shares and returns 25 underlying (matches preview=25)", async () => {
         const ownerAssetsBefore = await token.balanceOf(owner.address);
         const sharesBefore = await wrapped.balanceOf(owner.address);
 
         await wrapped.redeem(50, owner.address, owner.address);
 
         expect(sharesBefore.sub(await wrapped.balanceOf(owner.address))).to.equal(50);
-        expect((await token.balanceOf(owner.address)).sub(ownerAssetsBefore)).to.equal(24);
+        expect((await token.balanceOf(owner.address)).sub(ownerAssetsBefore)).to.equal(25);
       });
 
       it("sub-unit: redeem(1) burns 1 share for 0 underlying", async () => {
@@ -1602,7 +1603,7 @@ describe("WrappedBackedTokenImplementation", function () {
         expect(await token.balanceOf(owner.address)).to.equal(ownerAssetsBefore);
       });
 
-      it("deposit(52) -> redeem(101) loses exactly 1 wei to the vault (Up vs Down split)", async () => {
+      it("deposit(52) -> redeem(101) is a perfect round trip (share-based transfer)", async () => {
         const ownerAssetsBefore = await token.balanceOf(owner.address);
         const sharesBefore = await wrapped.balanceOf(owner.address);
 
@@ -1613,8 +1614,9 @@ describe("WrappedBackedTokenImplementation", function () {
 
         await wrapped.redeem(sharesMinted, owner.address, owner.address);
 
-        // Owner ends up 1 wei worse off than they started (paid 52, got back 51).
-        expect(ownerAssetsBefore.sub(await token.balanceOf(owner.address))).to.equal(1);
+        // The wrapper moves shares directly, so redeeming the same share count
+        // restores the owner's underlying balance exactly.
+        expect(await token.balanceOf(owner.address)).to.equal(ownerAssetsBefore);
       });
 
       it("mint(100) -> redeem(100) is a perfect round trip — exact at 100-share boundary", async () => {
@@ -1628,7 +1630,7 @@ describe("WrappedBackedTokenImplementation", function () {
         expect(await token.balanceOf(owner.address)).to.equal(ownerAssetsBefore);
       });
 
-      it("mint(101) -> redeem(101) loses 1 wei: pays Up=52, refunds Down=51", async () => {
+      it("mint(101) -> redeem(101) is a perfect round trip (share-based transfer)", async () => {
         const ownerAssetsBefore = await token.balanceOf(owner.address);
         const sharesBefore = await wrapped.balanceOf(owner.address);
 
@@ -1636,8 +1638,8 @@ describe("WrappedBackedTokenImplementation", function () {
         await wrapped.redeem(101, owner.address, owner.address);
 
         expect(await wrapped.balanceOf(owner.address)).to.equal(sharesBefore);
-        // Up-rounded mint cost vs Down-rounded redeem refund = 1 wei spread.
-        expect(ownerAssetsBefore.sub(await token.balanceOf(owner.address))).to.equal(1);
+        // Moving 101 shares out and back nets to zero regardless of preview rounding.
+        expect(await token.balanceOf(owner.address)).to.equal(ownerAssetsBefore);
       });
     });
   });
