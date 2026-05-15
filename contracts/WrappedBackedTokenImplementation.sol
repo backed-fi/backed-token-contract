@@ -215,7 +215,7 @@ contract WrappedBackedTokenImplementation is OwnableUpgradeable, ERC4626Upgradea
     /** @dev See {IERC4626-totalAssets}.
      * 
      * Instead of checking actual balances, we assume that we maintain 1:1 ratio between wrapper token and the shares of the underlying token
-     * , so total assets is calculated as the supply of wrapped tokens, multiplied by the current multiplier of the underlying token.
+     * , so total assets is calculated as the balance of shares of the underlying token kept by the contract, multiplied by the current multiplier of the underlying token.
      */
     function totalAssets() public view virtual override returns (uint256) {
         return _convertToAssets(totalSupply(), MathUpgradeable.Rounding.Down);
@@ -235,5 +235,41 @@ contract WrappedBackedTokenImplementation is OwnableUpgradeable, ERC4626Upgradea
     function _convertToAssets(uint256 shares, MathUpgradeable.Rounding rounding) internal view virtual override returns (uint256) {
         (uint256 currentMultiplier, ,) = IBackedAutoFeeToken(asset()).getCurrentMultiplier();
         return shares.mulDiv(currentMultiplier, 1e18, rounding);
+    }
+
+    /**
+     * @dev Deposit/mint common workflow, adjusted to the fact, that wrapper token is keeping the shares of the underlying token and not the underlying tokens themselves,
+     *  so it needs to transfer the shares from the user, and not do erc20 transfers as in a normal ERC4626 implementation.
+     */
+    function _deposit(address caller, address receiver, uint256 assetsRequested, uint256 shares) internal virtual override {
+        IBackedAutoFeeToken assetToken = IBackedAutoFeeToken(asset());
+        assetToken.transferSharesFrom(caller, address(this), shares);
+        _mint(receiver, shares);
+
+        uint256 assets = convertToAssets(shares);
+        emit Deposit(caller, receiver, assets, shares);
+    }
+
+    /**
+     * @dev Withdraw/redeem common workflow, adjusted to the fact, that wrapper token is keeping the shares of the underlying token and not the underlying tokens themselves,
+     *  so it needs to transfer the shares to the user, and not do erc20 transfers as in a normal ERC4626 implementation.
+     */
+    function _withdraw(
+        address caller,
+        address receiver,
+        address owner,
+        uint256 assetsRequested,
+        uint256 shares
+    ) internal virtual override {
+        if (caller != owner) {
+            _spendAllowance(owner, caller, shares);
+        }
+
+        _burn(owner, shares);
+        IBackedAutoFeeToken assetToken = IBackedAutoFeeToken(asset());
+        assetToken.transferShares(receiver, shares);
+
+        uint256 assets = convertToAssets(shares);
+        emit Withdraw(caller, receiver, owner, assets, shares);
     }
 }
