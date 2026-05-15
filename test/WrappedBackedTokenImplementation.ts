@@ -112,7 +112,6 @@ describe("WrappedBackedTokenImplementation", function () {
         ]
       )
     )).address, owner.signer)
-    await wrapped.setSanctionsList(sanctionsList.address);
 
 
     // Chain Id
@@ -759,44 +758,12 @@ describe("WrappedBackedTokenImplementation", function () {
     await expect(
       wrapped.connect(tmpAccount.signer).setPauser(tmpAccount.address)
     ).to.be.revertedWith("Ownable: caller is not the owner");
-
-    await expect(
-      wrapped.connect(tmpAccount.signer).setSanctionsList(tmpAccount.address)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
   });
 
-  it("Set SanctionsList", async function () {
-    // Deploy a new Sanctions List:
-    const sanctionsList2: SanctionsListMock = await (
-      await ethers.getContractFactory("SanctionsListMock", blacklister.signer)
-    ).deploy();
-    await sanctionsList2.deployed();
-
-    // Test current Sanctions List:
-    expect(await wrapped.sanctionsList()).to.equal(sanctionsList.address);
-
-    // Change SanctionsList
-    const receipt = await (
-      await wrapped.setSanctionsList(sanctionsList2.address)
-    ).wait();
-    expect(receipt.events?.[0].event).to.equal("NewSanctionsList");
-    expect(receipt.events?.[0].args?.[0]).to.equal(sanctionsList2.address);
-    expect(await wrapped.sanctionsList()).to.equal(sanctionsList2.address);
-  });
-
-  it("Try to set SanctionsList from wrong address", async function () {
-    await expect(
-      wrapped.connect(tmpAccount.signer).setSanctionsList(tmpAccount.address)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
-  });
-
-  it("Try to set SanctionsList to a contract not following the interface", async function () {
-    await expect(
-      wrapped.connect(owner.signer).setSanctionsList(wrapped.address)
-    ).to.be.revertedWith(
-      "Transaction reverted: function selector was not recognized and there's no fallback function"
-    );
-  });
+  // Sanctions list management has moved to the underlying token; the wrapped
+  // contract reads from `IBackedToken(asset()).sanctionsList()`. So the
+  // wrapper-side setters/getters no longer exist and the legacy
+  // "Set SanctionsList" tests have been removed.
 
   it("Check blocking of address in the Sanctions List", async function () {
     await token.approve(wrapped.address, 200);
@@ -855,7 +822,6 @@ describe("WrappedBackedTokenImplementation", function () {
     await wrapped.deposit(100, tmpAccount.address);
     await wrapped.deposit(100, burner.address);
     await wrapped.setPauser(pauser.address);
-    await wrapped.setSanctionsList(sanctionsList.address);
 
     // Sanction 0x0 address, and still mint:
     await sanctionsList.addToSanctionsList([ethers.constants.AddressZero]);
@@ -1166,7 +1132,7 @@ describe("WrappedBackedTokenImplementation", function () {
         // With higher multiplier, same assets give fewer shares
         expect(actualShares).to.be.lt(expectedShares);
       });
-
+      
       it("should handle multiplier decrease between previewWithdraw and withdraw", async () => {
         const depositAmount = BigNumber.from(1000);
         await token.approve(wrapped.address, depositAmount);
@@ -1185,6 +1151,493 @@ describe("WrappedBackedTokenImplementation", function () {
 
         // Withdraw should still work
         await wrapped.withdraw(withdrawAmount, owner.address, owner.address);
+      });
+    });
+  });
+
+  describe('Rounding math at multiplier = 10x', () => {
+    // The wrapper overrides _convertToShares/_convertToAssets to use the
+    // underlying multiplier directly:
+    //   shares = assets * 1e18 / multiplier   (floor)
+    //   assets = shares * multiplier / 1e18   (floor)
+    // and overrides previewMint/previewWithdraw to also round Down (see the
+    // contract's "Amounts are rounded down, in order to accomodate multiplier
+    // math done on underlying token" notes). At multiplier = 10e18:
+    //   previewDeposit(a) = previewWithdraw(a) = floor(a / 10)
+    //   previewMint(s)    = previewRedeem(s)   = s * 10  (always exact)
+    //
+    // The underlying BackedAutoFeeToken also floors `amount -> underlying-shares`
+    // on transfer, so a transferFrom of `a` actually moves
+    //   floor(a / 10) * 10 = a - (a % 10)
+    // underlying in balanceOf terms (the `a % 10` remainder vanishes).
+
+    const ONE = BigNumber.from(10).pow(18);
+
+    cacheBeforeEach(async () => {
+      // Prime: 1e18 underlying -> 1e18 wrapped shares (1:1 since vault was empty).
+      await token.approve(wrapped.address, ONE.mul(20));
+      await wrapped.deposit(ONE, owner.address);
+
+      // Move underlying multiplier to exactly 10x.
+      const previousMultiplier = await token.multiplier();
+      await token.updateMultiplierValue(ONE.mul(10), previousMultiplier, 0);
+
+      // Sanity check: vault state is what the formulas below assume.
+      expect(await wrapped.totalSupply()).to.equal(ONE);
+      expect(await wrapped.totalAssets()).to.equal(ONE.mul(10));
+      expect((await token.getCurrentMultiplier())[0]).to.equal(ONE.mul(10));
+    });
+
+    describe("preview functions follow floor(a/10) and s*10 exactly", () => {
+      it("previewDeposit(20) == 2  (assets divisible by multiplier — exact)", async () => {
+        expect(await wrapped.previewDeposit(20)).to.equal(2);
+        expect(await wrapped.previewWithdraw(20)).to.equal(2);
+      });
+
+      it("previewDeposit(25) == 2  (not divisible — rounds down, 5 wei lost)", async () => {
+        expect(await wrapped.previewDeposit(25)).to.equal(2);
+        expect(await wrapped.previewWithdraw(25)).to.equal(2);
+      });
+
+      it("previewDeposit(9) == 0  (less than one share's worth of assets)", async () => {
+        expect(await wrapped.previewDeposit(9)).to.equal(0);
+        expect(await wrapped.previewWithdraw(9)).to.equal(0);
+      });
+
+      it("previewMint and previewRedeem are always exact at 10x", async () => {
+        for (const s of [0, 1, 2, 7, 100, 999]) {
+          expect(await wrapped.previewMint(s), `previewMint(${s})`).to.equal(s * 10);
+          expect(await wrapped.previewRedeem(s), `previewRedeem(${s})`).to.equal(s * 10);
+        }
+      });
+    });
+
+    describe("deposit", () => {
+      it("exact: deposit(20) mints 2 shares and removes 20 underlying from owner", async () => {
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.deposit(20, owner.address);
+
+        expect((await wrapped.balanceOf(owner.address)).sub(sharesBefore)).to.equal(2);
+        expect(ownerAssetsBefore.sub(await token.balanceOf(owner.address))).to.equal(20);
+      });
+
+      it("inexact: deposit(25) mints 2 shares but only removes 20 underlying (5 wei lost in underlying rounding)", async () => {
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.deposit(25, owner.address);
+
+        // Wrapper mints floor(25/10) = 2 wrapped shares.
+        expect((await wrapped.balanceOf(owner.address)).sub(sharesBefore)).to.equal(2);
+        // But the underlying token's transferFrom floors amount->underlying-shares,
+        // so owner's balanceOf only drops by 20, not 25 — the 5-wei remainder simply
+        // never leaves the owner's account.
+        expect(ownerAssetsBefore.sub(await token.balanceOf(owner.address))).to.equal(20);
+      });
+    });
+
+    describe("mint", () => {
+      it("mint(7) pulls exactly 70 underlying and credits 7 shares — always exact at 10x", async () => {
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.mint(7, owner.address);
+
+        expect((await wrapped.balanceOf(owner.address)).sub(sharesBefore)).to.equal(7);
+        expect(ownerAssetsBefore.sub(await token.balanceOf(owner.address))).to.equal(70);
+      });
+
+      it("mint(0) is a no-op on balances", async () => {
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.mint(0, owner.address);
+
+        expect(await wrapped.balanceOf(owner.address)).to.equal(sharesBefore);
+        expect(await token.balanceOf(owner.address)).to.equal(ownerAssetsBefore);
+      });
+    });
+
+    describe("withdraw", () => {
+      it("exact: withdraw(40) burns 4 shares and pays out 40 underlying", async () => {
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.withdraw(40, owner.address, owner.address);
+
+        expect(sharesBefore.sub(await wrapped.balanceOf(owner.address))).to.equal(4);
+        expect((await token.balanceOf(owner.address)).sub(ownerAssetsBefore)).to.equal(40);
+      });
+
+      it("inexact: withdraw(45) burns floor(45/10)=4 shares and pays out 40 underlying (5 wei vanishes)", async () => {
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.withdraw(45, owner.address, owner.address);
+
+        expect(sharesBefore.sub(await wrapped.balanceOf(owner.address))).to.equal(4);
+        // Underlying token also floors the transfer -> only 40 actually moves.
+        expect((await token.balanceOf(owner.address)).sub(ownerAssetsBefore)).to.equal(40);
+      });
+    });
+
+    describe("redeem", () => {
+      it("redeem(3) burns 3 shares and returns exactly 30 underlying", async () => {
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.redeem(3, owner.address, owner.address);
+
+        expect(sharesBefore.sub(await wrapped.balanceOf(owner.address))).to.equal(3);
+        expect((await token.balanceOf(owner.address)).sub(ownerAssetsBefore)).to.equal(30);
+      });
+    });
+
+    describe("round trips", () => {
+      it("deposit(100) -> redeem returns exactly 100 — divides cleanly by multiplier", async () => {
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.deposit(100, owner.address);
+        const sharesMinted = (await wrapped.balanceOf(owner.address)).sub(sharesBefore);
+        expect(sharesMinted).to.equal(10);
+
+        await wrapped.redeem(sharesMinted, owner.address, owner.address);
+
+        expect(await token.balanceOf(owner.address)).to.equal(ownerAssetsBefore);
+      });
+
+      it("deposit(107) -> redeem nets to zero — the 7-wei remainder never leaves owner's account", async () => {
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.deposit(107, owner.address);
+        const sharesMinted = (await wrapped.balanceOf(owner.address)).sub(sharesBefore);
+        expect(sharesMinted).to.equal(10); // floor(107/10)
+        // The wrapper *requested* 107 from owner, but the underlying token only
+        // moved floor(107*1e18/10e18)=10 underlying-shares (=100 in balanceOf).
+        // The 7-wei remainder stays in owner's account.
+        expect(ownerAssetsBefore.sub(await token.balanceOf(owner.address))).to.equal(100);
+
+        await wrapped.redeem(sharesMinted, owner.address, owner.address);
+
+        // After redeeming the 10 shares the owner is exactly whole again.
+        expect(await token.balanceOf(owner.address)).to.equal(ownerAssetsBefore);
+      });
+
+      it("mint(5) -> redeem(5) is a perfect round trip — assets math is exact at 10x", async () => {
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.mint(5, owner.address);
+        await wrapped.redeem(5, owner.address, owner.address);
+
+        expect(await wrapped.balanceOf(owner.address)).to.equal(sharesBefore);
+        expect(await token.balanceOf(owner.address)).to.equal(ownerAssetsBefore);
+      });
+    });
+  });
+
+  describe('Rounding math at multiplier = 0.51x', () => {
+    // The wrapper overrides _convertToShares/_convertToAssets and previewWithdraw,
+    // but NOT previewMint — so the active rounding directions are:
+    //   previewDeposit  -> _convertToShares Down  (OZ default)
+    //   previewMint     -> _convertToAssets Up    (OZ default — NOT overridden)
+    //   previewWithdraw -> _convertToShares Down  (wrapper override; non-standard)
+    //   previewRedeem   -> _convertToAssets Down  (OZ default)
+    // The wrapper's _convertToShares/_convertToAssets ignore totalSupply and use
+    // the underlying multiplier directly:
+    //   shares = a * 1e18 / multiplier   (rounding from caller)
+    //   assets = s * multiplier / 1e18   (rounding from caller)
+    // At multiplier = 0.51e18 these reduce to:
+    //   previewDeposit(a)  = previewWithdraw(a) = floor(a * 100 / 51)
+    //   previewMint(s)     = ceil (s * 51 / 100)         (Up — costs more)
+    //   previewRedeem(s)   = floor(s * 51 / 100)         (Down — pays less)
+    //
+    // The underlying BackedAutoFeeToken stores in shares and floors both
+    // amount->shares (on transfer) and shares->amount (on balanceOf), so the
+    // observed balanceOf delta of a transfer is a non-trivial composition of
+    // the wrapper's preview math and the underlying's flooring. The expected
+    // values in these tests were captured directly from the contract.
+
+    const ONE = BigNumber.from(10).pow(18);
+    const MULTIPLIER = ONE.mul(51).div(100); // 0.51e18
+
+    cacheBeforeEach(async () => {
+      // Prime: 1e18 underlying -> 1e18 wrapped shares (1:1 since vault was empty).
+      await token.approve(wrapped.address, ONE.mul(20));
+      await wrapped.deposit(ONE, owner.address);
+
+      const previousMultiplier = await token.multiplier();
+      await token.updateMultiplierValue(MULTIPLIER, previousMultiplier, 0);
+
+      expect(await wrapped.totalSupply()).to.equal(ONE);
+      expect(await wrapped.totalAssets()).to.equal(MULTIPLIER);
+      expect((await token.getCurrentMultiplier())[0]).to.equal(MULTIPLIER);
+    });
+
+    describe("preview functions", () => {
+      it("previewDeposit/previewWithdraw match floor(a * 100 / 51)", async () => {
+        // Both round Down (wrapper override on previewWithdraw).
+        expect(await wrapped.previewDeposit(0)).to.equal(0);
+        expect(await wrapped.previewDeposit(1)).to.equal(1);     // floor(100/51)
+        expect(await wrapped.previewDeposit(50)).to.equal(98);   // floor(5000/51)
+        expect(await wrapped.previewDeposit(51)).to.equal(100);  // exact
+        expect(await wrapped.previewDeposit(52)).to.equal(101);  // floor(5200/51)
+        expect(await wrapped.previewDeposit(102)).to.equal(200); // exact
+
+        for (const a of [0, 1, 50, 51, 52, 102]) {
+          expect(await wrapped.previewWithdraw(a), `previewWithdraw(${a})`).to.equal(
+            await wrapped.previewDeposit(a)
+          );
+        }
+      });
+
+      it("previewMint rounds Up (ceil) — Up-Down split with previewRedeem", async () => {
+        // previewMint = ceil(s * 51 / 100); previewRedeem = floor(s * 51 / 100)
+        expect(await wrapped.previewMint(0)).to.equal(0);
+        expect(await wrapped.previewMint(1)).to.equal(1);     // ceil(0.51)
+        expect(await wrapped.previewMint(50)).to.equal(26);   // ceil(25.5)
+        expect(await wrapped.previewMint(99)).to.equal(51);   // ceil(50.49)
+        expect(await wrapped.previewMint(100)).to.equal(51);  // exact
+        expect(await wrapped.previewMint(101)).to.equal(52);  // ceil(51.51)
+      });
+
+      it("previewRedeem rounds Down (floor)", async () => {
+        expect(await wrapped.previewRedeem(0)).to.equal(0);
+        expect(await wrapped.previewRedeem(1)).to.equal(0);     // floor(0.51) — sub-unit
+        expect(await wrapped.previewRedeem(50)).to.equal(25);   // floor(25.5)
+        expect(await wrapped.previewRedeem(99)).to.equal(50);   // floor(50.49)
+        expect(await wrapped.previewRedeem(100)).to.equal(51);  // exact
+        expect(await wrapped.previewRedeem(101)).to.equal(51);  // floor(51.51)
+      });
+
+      it("previewMint vs previewRedeem differ by exactly 1 wei when not divisible", async () => {
+        // 100 shares * 0.51 = 51 exactly -> Up == Down
+        expect((await wrapped.previewMint(100)).sub(await wrapped.previewRedeem(100))).to.equal(0);
+        // 1 share -> Up=1, Down=0
+        expect((await wrapped.previewMint(1)).sub(await wrapped.previewRedeem(1))).to.equal(1);
+        expect((await wrapped.previewMint(101)).sub(await wrapped.previewRedeem(101))).to.equal(1);
+      });
+    });
+
+    describe("deposit", () => {
+      it("exact: deposit(51) mints 100 shares and removes 51 underlying", async () => {
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.deposit(51, owner.address);
+
+        expect((await wrapped.balanceOf(owner.address)).sub(sharesBefore)).to.equal(100);
+        expect(ownerAssetsBefore.sub(await token.balanceOf(owner.address))).to.equal(51);
+      });
+
+      it("inexact: deposit(52) mints 101 shares and removes 52 underlying", async () => {
+        // Owner pays the full requested 52, but only gets shares worth previewRedeem(101) = 51.
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.deposit(52, owner.address);
+
+        expect((await wrapped.balanceOf(owner.address)).sub(sharesBefore)).to.equal(101);
+        expect(ownerAssetsBefore.sub(await token.balanceOf(owner.address))).to.equal(52);
+      });
+
+      it("inexact: deposit(50) mints 98 shares and removes 50 underlying", async () => {
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.deposit(50, owner.address);
+
+        expect((await wrapped.balanceOf(owner.address)).sub(sharesBefore)).to.equal(98);
+        expect(ownerAssetsBefore.sub(await token.balanceOf(owner.address))).to.equal(50);
+      });
+    });
+
+    describe("mint", () => {
+      it("exact: mint(100) credits 100 shares and pulls 51 underlying", async () => {
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.mint(100, owner.address);
+
+        expect((await wrapped.balanceOf(owner.address)).sub(sharesBefore)).to.equal(100);
+        expect(ownerAssetsBefore.sub(await token.balanceOf(owner.address))).to.equal(51);
+      });
+
+      it("inexact: mint(101) charges previewMint=52 underlying (Up rounding)", async () => {
+        // Up-rounding ensures the vault never under-charges for shares minted.
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.mint(101, owner.address);
+
+        expect((await wrapped.balanceOf(owner.address)).sub(sharesBefore)).to.equal(101);
+        expect(ownerAssetsBefore.sub(await token.balanceOf(owner.address))).to.equal(52);
+      });
+
+      it("inexact: mint(99) charges previewMint=51 underlying (Up rounding from 50.49)", async () => {
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.mint(99, owner.address);
+
+        expect((await wrapped.balanceOf(owner.address)).sub(sharesBefore)).to.equal(99);
+        expect(ownerAssetsBefore.sub(await token.balanceOf(owner.address))).to.equal(51);
+      });
+
+      it("sub-unit: mint(1) costs 1 underlying (Up-rounded from 0.51)", async () => {
+        // Despite a single share being worth less than 1 wei at this multiplier,
+        // the Up rounding charges 1 wei to avoid free shares.
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.mint(1, owner.address);
+
+        expect((await wrapped.balanceOf(owner.address)).sub(sharesBefore)).to.equal(1);
+        expect(ownerAssetsBefore.sub(await token.balanceOf(owner.address))).to.equal(1);
+      });
+    });
+
+    describe("withdraw", () => {
+      it("exact: withdraw(51) burns 100 shares and pays 51 underlying", async () => {
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.withdraw(51, owner.address, owner.address);
+
+        expect(sharesBefore.sub(await wrapped.balanceOf(owner.address))).to.equal(100);
+        expect((await token.balanceOf(owner.address)).sub(ownerAssetsBefore)).to.equal(51);
+      });
+
+      it("inexact: withdraw(52) burns 101 shares but pays only 51 underlying (1 wei lost in underlying flooring)", async () => {
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.withdraw(52, owner.address, owner.address);
+
+        expect(sharesBefore.sub(await wrapped.balanceOf(owner.address))).to.equal(101);
+        expect((await token.balanceOf(owner.address)).sub(ownerAssetsBefore)).to.equal(51);
+      });
+
+      it("inexact: withdraw(50) burns 98 shares and pays 49 underlying", async () => {
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.withdraw(50, owner.address, owner.address);
+
+        expect(sharesBefore.sub(await wrapped.balanceOf(owner.address))).to.equal(98);
+        expect((await token.balanceOf(owner.address)).sub(ownerAssetsBefore)).to.equal(49);
+      });
+
+      it("sub-unit: withdraw(1) burns 1 share but receives 0 underlying", async () => {
+        // The wrapper sends 1 underlying to owner, but at multiplier 0.51 the
+        // underlying token converts that to 1 underlying-share, which contributes
+        // 0 wei to owner.balanceOf (sub-multiplier resolution).
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.withdraw(1, owner.address, owner.address);
+
+        expect(sharesBefore.sub(await wrapped.balanceOf(owner.address))).to.equal(1);
+        expect(await token.balanceOf(owner.address)).to.equal(ownerAssetsBefore);
+      });
+    });
+
+    describe("redeem", () => {
+      it("exact: redeem(100) burns 100 shares and returns 51 underlying", async () => {
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.redeem(100, owner.address, owner.address);
+
+        expect(sharesBefore.sub(await wrapped.balanceOf(owner.address))).to.equal(100);
+        expect((await token.balanceOf(owner.address)).sub(ownerAssetsBefore)).to.equal(51);
+      });
+
+      it("inexact: redeem(101) burns 101 shares and returns previewRedeem=51 underlying", async () => {
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.redeem(101, owner.address, owner.address);
+
+        expect(sharesBefore.sub(await wrapped.balanceOf(owner.address))).to.equal(101);
+        expect((await token.balanceOf(owner.address)).sub(ownerAssetsBefore)).to.equal(51);
+      });
+
+      it("inexact: redeem(50) burns 50 shares and returns 24 underlying (preview=25, then -1 from underlying flooring)", async () => {
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.redeem(50, owner.address, owner.address);
+
+        expect(sharesBefore.sub(await wrapped.balanceOf(owner.address))).to.equal(50);
+        expect((await token.balanceOf(owner.address)).sub(ownerAssetsBefore)).to.equal(24);
+      });
+
+      it("sub-unit: redeem(1) burns 1 share for 0 underlying", async () => {
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.redeem(1, owner.address, owner.address);
+
+        expect(sharesBefore.sub(await wrapped.balanceOf(owner.address))).to.equal(1);
+        expect(await token.balanceOf(owner.address)).to.equal(ownerAssetsBefore);
+      });
+    });
+
+    describe("round trips", () => {
+      it("deposit(51) -> redeem(100) is exact at the multiplier boundary", async () => {
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.deposit(51, owner.address);
+        const sharesMinted = (await wrapped.balanceOf(owner.address)).sub(sharesBefore);
+        expect(sharesMinted).to.equal(100);
+
+        await wrapped.redeem(sharesMinted, owner.address, owner.address);
+
+        expect(await token.balanceOf(owner.address)).to.equal(ownerAssetsBefore);
+      });
+
+      it("deposit(52) -> redeem(101) loses exactly 1 wei to the vault (Up vs Down split)", async () => {
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.deposit(52, owner.address);
+        const sharesMinted = (await wrapped.balanceOf(owner.address)).sub(sharesBefore);
+        expect(sharesMinted).to.equal(101);
+        expect(ownerAssetsBefore.sub(await token.balanceOf(owner.address))).to.equal(52);
+
+        await wrapped.redeem(sharesMinted, owner.address, owner.address);
+
+        // Owner ends up 1 wei worse off than they started (paid 52, got back 51).
+        expect(ownerAssetsBefore.sub(await token.balanceOf(owner.address))).to.equal(1);
+      });
+
+      it("mint(100) -> redeem(100) is a perfect round trip — exact at 100-share boundary", async () => {
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.mint(100, owner.address);
+        await wrapped.redeem(100, owner.address, owner.address);
+
+        expect(await wrapped.balanceOf(owner.address)).to.equal(sharesBefore);
+        expect(await token.balanceOf(owner.address)).to.equal(ownerAssetsBefore);
+      });
+
+      it("mint(101) -> redeem(101) loses 1 wei: pays Up=52, refunds Down=51", async () => {
+        const ownerAssetsBefore = await token.balanceOf(owner.address);
+        const sharesBefore = await wrapped.balanceOf(owner.address);
+
+        await wrapped.mint(101, owner.address);
+        await wrapped.redeem(101, owner.address, owner.address);
+
+        expect(await wrapped.balanceOf(owner.address)).to.equal(sharesBefore);
+        // Up-rounded mint cost vs Down-rounded redeem refund = 1 wei spread.
+        expect(ownerAssetsBefore.sub(await token.balanceOf(owner.address))).to.equal(1);
       });
     });
   });

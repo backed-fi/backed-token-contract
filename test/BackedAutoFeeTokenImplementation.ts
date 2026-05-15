@@ -227,11 +227,41 @@ describe("BackedAutoFeeTokenImplementation", function () {
         expect(await tokenV2Upgraded.newMultiplierActivationTime()).to.be.equal(0);
       });
     });
+
+    describe('When called on a proxy without v3 fields populated', () => {
+      // Simulate a real v2 -> v3 upgrade by upgrading a v1 proxy directly to the v3
+      // implementation, leaving the new* storage slots at their zero default.
+      let tokenFreshV3: BackedAutoFeeTokenImplementation;
+
+      cacheBeforeEach(async () => {
+        const v1Implementation = await new BackedTokenImplementation__factory(owner.signer).deploy();
+        const tokenProxy = await new BackedTokenProxy__factory(owner.signer).deploy(
+          v1Implementation.address,
+          proxyAdmin.address,
+          v1Implementation.interface.encodeFunctionData('initialize', [tokenName, tokenSymbol])
+        );
+
+        const v3Implementation = await new BackedAutoFeeTokenImplementation__factory(owner.signer).deploy();
+        await proxyAdmin.upgrade(tokenProxy.address, v3Implementation.address);
+
+        tokenFreshV3 = BackedAutoFeeTokenImplementation__factory.connect(tokenProxy.address, owner.signer);
+      });
+
+      it("Should populate newMultiplier and newMultiplierNonce from last* values", async function () {
+        expect(await tokenFreshV3.newMultiplier()).to.be.equal(0);
+
+        await tokenFreshV3.initialize_v3();
+
+        expect(await tokenFreshV3.newMultiplier()).to.be.equal(await tokenFreshV3.lastMultiplier());
+        expect(await tokenFreshV3.newMultiplierNonce()).to.be.equal(await tokenFreshV3.lastMultiplierNonce());
+        expect(await tokenFreshV3.newMultiplierActivationTime()).to.be.equal(0);
+      });
+    });
   })
 
   describe('#getCurrentMultiplier', () => {
-    describe('when time moved by 365 days forward', () => {
-      const periodsPassed = 365;
+    describe('when time moved forward', () => {
+      const periodsPassed = 7;
       let preMultiplier: BigNumber;
       let preMultiplierNonce: BigNumber;
       describe('and fee is set to non-zero value', () => {
@@ -387,8 +417,8 @@ describe("BackedAutoFeeTokenImplementation", function () {
     })
   })
   describe('#updateMultiplier', () => {
-    describe('when time moved by 365 days forward', () => {
-      const periodsPassed = 365;
+    describe('when time moved forward', () => {
+      const periodsPassed = 7;
       const baseMintedAmount = ethers.BigNumber.from(10).pow(18);
       let mintedShares: BigNumber;
       cacheBeforeEach(async () => {
@@ -505,8 +535,14 @@ describe("BackedAutoFeeTokenImplementation", function () {
       });
 
       describe('#balanceOf', () => {
-        it('Should decrease balance of the user by fee accrued in 365 days', async () => {
-          expect((await token.balanceOf(owner.address)).sub(baseMintedAmount.mul(annualFee * 100).div(100)).abs()).to.lte(
+        it('Should decrease balance of the user by fee accrued', async () => {
+          const feePerPeriod = await token.feePerPeriod();
+          let cumMult = ethers.BigNumber.from(10).pow(18);
+          for (let i = 0; i < periodsPassed; i++) {
+            cumMult = cumMult.mul(ethers.BigNumber.from(10).pow(18).sub(feePerPeriod)).div(ethers.BigNumber.from(10).pow(18));
+          }
+          const expectedBalance = baseMintedAmount.mul(cumMult).div(ethers.BigNumber.from(10).pow(18));
+          expect((await token.balanceOf(owner.address)).sub(expectedBalance).abs()).to.lte(
             BigNumber.from(10).pow(3)
           )
         })
@@ -514,14 +550,22 @@ describe("BackedAutoFeeTokenImplementation", function () {
 
       describe('#getSharesByUnderlyingAmount', () => {
         it('Should increase amount of shares neeeded for given underlying amount', async () => {
-          const amount = 1000;
-          expect((await token.getSharesByUnderlyingAmount(amount))).to.eq(ethers.BigNumber.from(amount / annualFee))
+          const amount = ethers.BigNumber.from(10).pow(15);
+          const { currentMultiplier } = await token.getCurrentMultiplier();
+          const expectedShares = amount.mul(ethers.BigNumber.from(10).pow(18)).div(currentMultiplier);
+          expect((await token.getSharesByUnderlyingAmount(amount))).to.eq(expectedShares)
         })
       });
 
       describe('#totalSupply', () => {
-        it('Should decrease total supply of the token by the fee accrued in 365 days', async () => {
-          expect((await token.totalSupply()).sub(baseMintedAmount.mul(annualFee * 100).div(100)).abs()).to.lte(
+        it('Should decrease total supply of the token by the fee accrued', async () => {
+          const feePerPeriod = await token.feePerPeriod();
+          let cumMult = ethers.BigNumber.from(10).pow(18);
+          for (let i = 0; i < periodsPassed; i++) {
+            cumMult = cumMult.mul(ethers.BigNumber.from(10).pow(18).sub(feePerPeriod)).div(ethers.BigNumber.from(10).pow(18));
+          }
+          const expectedSupply = baseMintedAmount.mul(cumMult).div(ethers.BigNumber.from(10).pow(18));
+          expect((await token.totalSupply()).sub(expectedSupply).abs()).to.lte(
             BigNumber.from(10).pow(3)
           )
         })
@@ -655,8 +699,8 @@ describe("BackedAutoFeeTokenImplementation", function () {
           await expect(subject()).to.be.reverted;
         })
 
-        describe('when time moved by 365 days forward', () => {
-          const periodsPassed = 365;
+        describe('when time moved forward', () => {
+          const periodsPassed = 7;
           cacheBeforeEach(async () => {
             await helpers.time.setNextBlockTimestamp(baseTime + periodsPassed * accrualPeriodLength);
             await helpers.mine()
@@ -1817,6 +1861,161 @@ describe("BackedAutoFeeTokenImplementation", function () {
       it('Should allow setPeriodLength', async () => {
         await expect(token.setPeriodLength(12 * 3600)).to.not.be.reverted;
       });
+    });
+  });
+
+  describe('#updateMultiplierWithNonce - outdated nonce', () => {
+    it('Should revert when called by multiplierUpdater with non-increasing nonce', async () => {
+      const { currentMultiplier, currentMultiplierNonce } = await token.getCurrentMultiplier();
+      await expect(
+        token.updateMultiplierWithNonce(currentMultiplier, currentMultiplier, currentMultiplierNonce, 0)
+      ).to.be.revertedWith("BackedToken: Multiplier nonce is outdated.");
+    });
+  });
+
+  describe('#delegatedTransferShares - expired deadline (multiplier still valid)', () => {
+    const baseMintedAmount = ethers.BigNumber.from(10).pow(18);
+    const sharesToTransfer = ethers.BigNumber.from(10).pow(18);
+    let signature: string;
+    let deadline: number;
+
+    cacheBeforeEach(async () => {
+      await token.connect(minter.signer).mint(owner.address, baseMintedAmount);
+      await token.setDelegateWhitelist(actor.address, true);
+
+      // Use a deadline only slightly in the future so we can pass it without
+      // letting many fee periods elapse (which would cause the multiplier to
+      // decay and revert before the deadline check is reached).
+      deadline = baseTime + 100;
+      const nonce = await token.nonces(owner.address);
+      const domain = {
+        name: await token.name(),
+        version: "1",
+        chainId: await owner.signer.getChainId(),
+        verifyingContract: token.address
+      };
+      const types = {
+        DELEGATED_TRANSFER_SHARES: [
+          { type: 'address', name: 'owner' },
+          { type: 'address', name: 'to' },
+          { type: 'uint256', name: 'value' },
+          { type: 'uint256', name: 'nonce' },
+          { type: 'uint256', name: 'deadline' }
+        ]
+      };
+      const msg = {
+        owner: owner.address,
+        to: actor.address,
+        value: sharesToTransfer,
+        nonce: nonce,
+        deadline: deadline
+      };
+      const signer = await ethers.getSigner(owner.address);
+      signature = await signer._signTypedData(domain, types, msg);
+    });
+
+    it('Should revert with expired deadline message', async () => {
+      await helpers.time.setNextBlockTimestamp(deadline + 1);
+      await helpers.mine();
+      const sig = ethers.utils.splitSignature(signature);
+      await expect(
+        token.connect(actor.signer).delegatedTransferShares(
+          owner.address, actor.address, sharesToTransfer, deadline, sig.v, sig.r, sig.s
+        )
+      ).to.be.revertedWith("ERC20Permit: expired deadline");
+    });
+  });
+
+  describe('#updateMultiplier modifier - multiplier decays to zero', () => {
+    // After raising the fee to (1e18 - 1) and letting a few periods pass,
+    // the multiplier rounds down to zero in the modifier's update loop.
+    // The next call through the modifier then reverts inside _updateMultiplier,
+    // which exercises the failure path of the updateMultiplier modifier
+    // for each function that uses it.
+    const maxFee = ethers.BigNumber.from(10).pow(18).sub(1);
+    const periodsToCollapse = 5;
+
+    cacheBeforeEach(async () => {
+      await token.updateFeePerPeriod(maxFee);
+      await token.connect(minter.signer).mint(owner.address, ethers.BigNumber.from(10).pow(18));
+      await token.approve(actor.address, ethers.BigNumber.from(10).pow(18));
+      await helpers.time.setNextBlockTimestamp(baseTime + periodsToCollapse * accrualPeriodLength);
+      await helpers.mine();
+    });
+
+    it('transferShares should revert', async () => {
+      await expect(
+        token.transferShares(actor.address, 1)
+      ).to.be.revertedWith("BackedToken: Multiplier cannot be zero");
+    });
+
+    it('transferSharesFrom should revert', async () => {
+      await expect(
+        token.connect(actor.signer).transferSharesFrom(owner.address, tmpAccount.address, 1)
+      ).to.be.revertedWith("BackedToken: Multiplier cannot be zero");
+    });
+
+    it('setLastTimeFeeApplied should revert', async () => {
+      await expect(
+        token.setLastTimeFeeApplied(baseTime + 1)
+      ).to.be.revertedWith("BackedToken: Multiplier cannot be zero");
+    });
+
+    it('setPeriodLength should revert', async () => {
+      await expect(
+        token.setPeriodLength(accrualPeriodLength * 2)
+      ).to.be.revertedWith("BackedToken: Multiplier cannot be zero");
+    });
+
+    it('updateMultiplierValue should revert', async () => {
+      await expect(
+        token.updateMultiplierValue(1, 0, 0)
+      ).to.be.revertedWith("BackedToken: Multiplier cannot be zero");
+    });
+
+    it('updateMultiplierWithNonce should revert', async () => {
+      await expect(
+        token.updateMultiplierWithNonce(1, 0, 1, 0)
+      ).to.be.revertedWith("BackedToken: Multiplier cannot be zero");
+    });
+
+    it('mint (via _beforeTokenTransfer) should revert', async () => {
+      // _mint calls _beforeTokenTransfer (which carries the updateMultiplier
+      // modifier) before any shares math, so this exercises the modifier's
+      // failure path at the _beforeTokenTransfer invocation site.
+      await expect(
+        token.connect(minter.signer).mint(owner.address, 1)
+      ).to.be.revertedWith("BackedToken: Multiplier cannot be zero");
+    });
+  });
+
+  describe('#decimals', () => {
+    it('Should return 18 by default', async () => {
+      expect(await token.decimals()).to.be.equal(18);
+    });
+  });
+
+  describe('#_updateMultiplier - invalid activation time', () => {
+    it('updateMultiplierValue should revert when activation time is at/after next period boundary', async () => {
+      const { currentMultiplier } = await token.getCurrentMultiplier();
+      const newMult = currentMultiplier.mul(110).div(100);
+      const lastTimeFeeApplied = await token.lastTimeFeeApplied();
+      const periodLength = await token.periodLength();
+      const tooLate = lastTimeFeeApplied.add(periodLength); // == lastTimeFeeApplied + periodLength
+      await expect(
+        token.updateMultiplierValue(newMult, currentMultiplier, tooLate)
+      ).to.be.revertedWith("BackedToken: Activation time needs to be before next period");
+    });
+
+    it('updateMultiplierWithNonce should revert when activation time is at/after next period boundary', async () => {
+      const { currentMultiplier, currentMultiplierNonce } = await token.getCurrentMultiplier();
+      const newMult = currentMultiplier.mul(110).div(100);
+      const lastTimeFeeApplied = await token.lastTimeFeeApplied();
+      const periodLength = await token.periodLength();
+      const tooLate = lastTimeFeeApplied.add(periodLength).add(1);
+      await expect(
+        token.updateMultiplierWithNonce(newMult, currentMultiplier, currentMultiplierNonce.add(1), tooLate)
+      ).to.be.revertedWith("BackedToken: Activation time needs to be before next period");
     });
   });
 

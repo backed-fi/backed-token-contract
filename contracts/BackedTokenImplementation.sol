@@ -39,6 +39,7 @@ pragma solidity 0.8.9;
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "./ERC20PermitDelegateTransfer.sol";
 import "./SanctionsList.sol";
+import "./interfaces/IBackedToken.sol";
 
 /**
  * @dev
@@ -55,7 +56,7 @@ import "./SanctionsList.sol";
  * 
  */
 
-contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTransfer {
+contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTransfer, IBackedToken {
     string constant public VERSION = "1.1.0";
 
     // Roles:
@@ -75,16 +76,6 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
 
     // Terms:
     string public terms;
-
-    // Events:
-    event NewMinter(address indexed newMinter);
-    event NewBurner(address indexed newBurner);
-    event NewPauser(address indexed newPauser);
-    event NewSanctionsList(address indexed newSanctionsList);
-    event DelegateWhitelistChange(address indexed whitelistAddress, bool status);
-    event DelegateModeChange(bool delegateMode);
-    event PauseModeChange(bool pauseMode);
-    event NewTerms(string newTerms);
 
     modifier allowedDelegate {
         require(delegateMode || delegateWhitelist[_msgSender()], "BackedToken: Unauthorized delegate");
@@ -151,6 +142,10 @@ contract BackedTokenImplementation is OwnableUpgradeable, ERC20PermitDelegateTra
         bytes32 s
     ) public virtual override allowedDelegate {
         super.delegatedTransfer(owner, to, value, deadline, v, r, s);
+    }
+
+    function decimals() public view virtual override(ERC20Upgradeable, IBackedToken) returns (uint8) {
+        return super.decimals();
     }
 
     /**
