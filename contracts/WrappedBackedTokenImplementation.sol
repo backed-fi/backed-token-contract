@@ -203,6 +203,14 @@ contract WrappedBackedTokenImplementation is OwnableUpgradeable, ERC4626Upgradea
 
         super._spendAllowance(owner, spender, amount);
     }
+    
+    /** @dev See {IERC4626-previewMint}.
+     * 
+     * Amounts are rounded down, in order to accomodate multiplier math done on underlying token
+     */
+    function previewMint(uint256 shares) public view virtual override returns (uint256) {
+        return _convertToAssets(shares, MathUpgradeable.Rounding.Down);
+    }
 
     /** @dev See {IERC4626-previewWithdraw}.
      * 
