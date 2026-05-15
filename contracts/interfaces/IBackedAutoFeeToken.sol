@@ -15,6 +15,69 @@ import "./IBackedToken.sol";
  * - The multiplier can be updated by an authorized multiplierUpdater address
  */
 interface IBackedAutoFeeToken is IBackedToken {
+    /**
+     * @dev Struct representing multiplier update
+     * @param previousMultiplier The multiplier value before this update
+     * @param newMultiplier The multiplier value after this update
+     * @param activationTime The Unix timestamp when this update was/will be activated
+     */
+    struct MultiplierUpdate {
+        uint256 previousMultiplier;
+        uint256 newMultiplier;
+        uint256 activationTime;
+    }
+
+    // Events
+
+    /**
+     * @dev Emitted when the multiplier updater address is changed
+     * @param newMultiplierUpdater The address of the new multiplier updater
+     */
+    event NewMultiplierUpdater(address indexed newMultiplierUpdater);
+
+    /**
+     * @dev Emitted when shares are transferred between addresses
+     * @param from The address shares are transferred from
+     * @param to The address shares are transferred to
+     * @param value The amount of shares transferred
+     */
+    event TransferShares(address indexed from, address indexed to, uint256 value);
+
+    /**
+     * @dev Emitted when the multiplier value is updated and activated
+     * @param value The new multiplier value (in 1e18 precision)
+     */
+    event MultiplierUpdated(uint256 value);
+
+    /**
+     * @dev Emitted when a multiplier is scheduled for future activation
+     * @param newMultiplier The new multiplier value that will be activated (in 1e18 precision)
+     * @param activationTime The Unix timestamp when the multiplier will become active
+     */
+    event MultiplierScheduled(uint256 newMultiplier, uint256 activationTime);
+
+    /**
+     * @dev Emitted when a previously scheduled multiplier update is replaced
+     * before its activationTime is reached. The overridden entry is removed
+     * from `multiplierUpdates` in place and replaced by the new one.
+     *
+     * Off-chain consumers reconstructing state from events should drop any
+     * earlier `MultiplierScheduled(overriddenMultiplier, overriddenActivationTime)`
+     * upon seeing this event.
+     *
+     * @param overriddenMultiplier The newMultiplier of the pending entry that
+     *        was discarded (the one previously announced via MultiplierScheduled)
+     * @param overriddenActivationTime The activationTime of the discarded entry
+     * @param newMultiplier The newMultiplier that replaces it (already announced
+     *        in this same transaction via MultiplierScheduled or MultiplierUpdated)
+     * @param newActivationTime The activationTime stored for the replacement
+     */
+    event MultiplierScheduleOverridden(
+        uint256 overriddenMultiplier,
+        uint256 overriddenActivationTime,
+        uint256 newMultiplier,
+        uint256 newActivationTime
+    );
 
     // View functions - EIP-712 and Roles
 
@@ -118,6 +181,44 @@ interface IBackedAutoFeeToken is IBackedToken {
      * @return The equivalent amount of tokens
      */
     function getUnderlyingAmountByShares(uint256 _sharesAmount) external view returns (uint256);
+
+    /**
+     * @dev Returns the length of the multiplierUpdates array.
+     *
+     * The array records *explicit* multiplier updates only (those submitted
+     * via `updateMultiplierValue` / `updateMultiplierWithNonce`). Automatic
+     * per-period fee decay is NOT appended. See `multiplierUpdates` for the
+     * full semantics.
+     *
+     * @return The number of explicit multiplier updates stored
+     *         (including the genesis sentinel at index 0).
+     */
+    function multiplierUpdatesLength() external view returns (uint256);
+
+    /**
+     * @dev Returns a specific explicit multiplier update by index.
+     *
+     * This array is an append-only log of *explicit* multiplier updates only;
+     * automatic per-period fee decay is applied lazily to `lastMultiplier`
+     * without appending here. As a result `previousMultiplier` at index `i`
+     * is the fee-decayed value at the time of the i-th explicit update and
+     * is typically less than `newMultiplier` at index `i-1` — the gap is the
+     * accrual that happened in between.
+     *
+     * Index 0 is a genesis sentinel `{1e18, 1e18, 0}`. A future-dated entry
+     * that is overridden before activation is popped from this array; the
+     * `MultiplierScheduled` event for the popped entry remains on chain.
+     *
+     * @param index The index in the multiplierUpdates array
+     * @return previousMultiplier The (possibly fee-decayed) multiplier value
+     *         immediately before this explicit update was applied
+     * @return newMultiplier The multiplier value after this update
+     * @return activationTime The Unix timestamp when this update was/will be
+     *         activated; equals `block.timestamp` at recording time for
+     *         immediate updates, or the requested future timestamp for
+     *         scheduled ones
+     */
+    function multiplierUpdates(uint256 index) external view returns (uint256 previousMultiplier, uint256 newMultiplier, uint256 activationTime);
 
     // State-changing functions - Share Transfers
 
