@@ -280,3 +280,113 @@ describe("Upgrade from v1.1.0 to auto fee", () => {
     expect(await tokenV2.balanceOf(tmpAccount.address)).to.equal(150);
   });
 });
+
+describe("Upgrade to v4 (multiplier history migration)", () => {
+  let v4Impl: BackedAutoFeeTokenImplementation;
+  let token: BackedAutoFeeTokenImplementation;
+  let tokenV1: BackedTokenImplementation;
+  let v1Factory: BackedFactory;
+
+  let owner: SignerWithAddress;
+  let minter: SignerWithAddress;
+  let burner: SignerWithAddress;
+  let pauser: SignerWithAddress;
+  let blacklister: SignerWithAddress;
+  let attacker: SignerWithAddress;
+  let sanctionsList: SanctionsListMock;
+
+  const tokenName = "Wrapped Apple";
+  const tokenSymbol = "WAAPL";
+
+  const past = [
+    { previousMultiplier: "1000000000000000000", newMultiplier: "999000000000000000", activationTime: 1700000000 },
+    { previousMultiplier: "999000000000000000", newMultiplier: "998000000000000000", activationTime: 1700086400 },
+  ];
+
+  beforeEach(async () => {
+    owner = await getSigner(0);
+    minter = await getSigner(1);
+    burner = await getSigner(2);
+    pauser = await getSigner(3);
+    blacklister = await getSigner(4);
+    attacker = await getSigner(5);
+
+    // Deploy a v1.1.0 token proxy (its multiplierUpdates array is empty,
+    // which is the precondition initialize_v4 requires).
+    v1Factory = await (
+      await ethers.getContractFactory("BackedFactory")
+    ).deploy(owner.address);
+
+    sanctionsList = await (
+      await ethers.getContractFactory("SanctionsListMock", blacklister.signer)
+    ).deploy();
+
+    const receipt = await (
+      await v1Factory.deployToken(
+        tokenName,
+        tokenSymbol,
+        owner.address,
+        minter.address,
+        burner.address,
+        pauser.address,
+        sanctionsList.address
+      )
+    ).wait();
+
+    const deployedTokenAddress = receipt.events?.find(
+      (event: any) => event.event === "NewToken"
+    )?.args?.newToken;
+
+    tokenV1 = await ethers.getContractAt(
+      "BackedTokenImplementation",
+      deployedTokenAddress
+    );
+
+    v4Impl = await (
+      await ethers.getContractFactory("BackedAutoFeeTokenImplementation")
+    ).deploy();
+    await v4Impl.deployed();
+  });
+
+  it("atomic upgradeAndCall backfills history and is one-shot", async () => {
+    const proxyAdmin = await ethers.getContractAt(
+      "ProxyAdmin",
+      await v1Factory.proxyAdmin()
+    );
+
+    // Atomic: flip implementation AND run initialize_v4 in a single tx.
+    await proxyAdmin.upgradeAndCall(
+      tokenV1.address,
+      v4Impl.address,
+      v4Impl.interface.encodeFunctionData('initialize_v4', [past])
+    );
+
+    token = await ethers.getContractAt(
+      "BackedAutoFeeTokenImplementation",
+      tokenV1.address
+    );
+
+    // Genesis sentinel at index 0 + the two backfilled entries.
+    expect(await token.multiplierUpdatesLength()).to.equal(3);
+
+    const sentinel = await token.multiplierUpdates(0);
+    expect(sentinel.previousMultiplier).to.equal("1000000000000000000");
+    expect(sentinel.newMultiplier).to.equal("1000000000000000000");
+    expect(sentinel.activationTime).to.equal(0);
+
+    const first = await token.multiplierUpdates(1);
+    expect(first.previousMultiplier).to.equal(past[0].previousMultiplier);
+    expect(first.newMultiplier).to.equal(past[0].newMultiplier);
+    expect(first.activationTime).to.equal(past[0].activationTime);
+
+    const second = await token.multiplierUpdates(2);
+    expect(second.previousMultiplier).to.equal(past[1].previousMultiplier);
+    expect(second.newMultiplier).to.equal(past[1].newMultiplier);
+    expect(second.activationTime).to.equal(past[1].activationTime);
+
+    // One-shot: any later call (any caller) reverts.
+    await expect(token.initialize_v4([])).to.be.revertedWith(
+      "BackedAutoFeeTokenImplementation v4 already initialized"
+    );
+  });
+});
