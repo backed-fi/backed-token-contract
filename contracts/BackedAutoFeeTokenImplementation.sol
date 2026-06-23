@@ -105,6 +105,16 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation, IBackedA
      */
     MultiplierUpdate[] public multiplierUpdates;
 
+    // Multi-minter with per-address mint cap
+    mapping(address => uint256) public minterAllowance;
+
+    // Multi-burner with per-address burn cap
+    mapping(address => uint256) public burnerAllowance;
+
+    // Events
+    event MinterAllowanceChanged(address indexed minter, uint256 allowance);
+    event BurnerAllowanceChanged(address indexed burner, uint256 allowance);
+
     function multiplierNonce() external view returns (uint256) {
         if(block.timestamp >= newMultiplierActivationTime) {
             return newMultiplierNonce;
@@ -424,6 +434,80 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation, IBackedA
     function setPeriodLength(uint256 newPeriodLength) external onlyOwner updateMultiplier {
         require(newMultiplierActivationTime == 0, "Multiplier activation in progress");
         periodLength = newPeriodLength;
+    }
+
+    /**
+     * @dev Function to set the minting allowance for an address. Allowed only for owner.
+     * Set to 0 to revoke minting rights.
+     *
+     * Emits a { MinterAllowanceChanged } event
+     *
+     * @param minterAddress The address to set the allowance for
+     * @param allowance The maximum amount of tokens this address can mint
+     */
+    function setMinterAllowance(
+        address minterAddress,
+        uint256 allowance
+    ) external onlyOwner {
+        minterAllowance[minterAddress] = allowance;
+        emit MinterAllowanceChanged(minterAddress, allowance);
+    }
+
+    /**
+     * @dev Function to mint tokens. Allowed for the primary minter (unlimited)
+     * or any address with sufficient minterAllowance (capped).
+     *
+     * @param account   The address that will receive the minted tokens
+     * @param amount    The amount of tokens to mint
+     */
+    function mint(address account, uint256 amount) override external {
+        address sender = _msgSender();
+        if (sender == minter) {
+            // Primary minter: unlimited, backward-compatible
+            _mint(account, amount);
+        } else {
+            require(minterAllowance[sender] >= amount, "BackedToken: Minter allowance exceeded");
+            minterAllowance[sender] -= amount;
+            _mint(account, amount);
+        }
+    }
+
+    /**
+     * @dev Function to set the burning allowance for an address. Allowed only for owner.
+     * Set to 0 to revoke burning rights.
+     *
+     * Emits a { BurnerAllowanceChanged } event
+     *
+     * @param burnerAddress The address to set the allowance for
+     * @param allowance The maximum amount of tokens this address can burn
+     */
+    function setBurnerAllowance(
+        address burnerAddress,
+        uint256 allowance
+    ) external onlyOwner {
+        burnerAllowance[burnerAddress] = allowance;
+        emit BurnerAllowanceChanged(burnerAddress, allowance);
+    }
+
+    /**
+     * @dev Function to burn tokens. Allowed for the primary burner (unlimited)
+     * or any address with sufficient burnerAllowance (capped).
+     * The burned tokens must be from the caller (msg.sender), or from the contract itself.
+     *
+     * @param account   The account from which the tokens will be burned
+     * @param amount    The amount of tokens to be burned
+     */
+    function burn(address account, uint256 amount) override external {
+        address sender = _msgSender();
+        require(account == sender || account == address(this), "BackedToken: Cannot burn account");
+        if (sender == burner) {
+            // Primary burner: unlimited, backward-compatible
+            _burn(account, amount);
+        } else {
+            require(burnerAllowance[sender] >= amount, "BackedToken: Burner allowance exceeded");
+            burnerAllowance[sender] -= amount;
+            _burn(account, amount);
+        }
     }
 
     /**
