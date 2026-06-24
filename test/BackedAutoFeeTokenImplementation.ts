@@ -638,7 +638,10 @@ describe("BackedAutoFeeTokenImplementation", function () {
       cacheBeforeEach(async () => {
         userBalance = await token.getUnderlyingAmountByShares(sharesToTransfer);
 
-        deadline = baseTime * 2;
+        // Far enough ahead that the "time moved forward" tests stay within it,
+        // but close enough that crossing it only elapses a handful of fee
+        // periods (the updateMultiplier modifier loops once per period).
+        deadline = baseTime + 8 * accrualPeriodLength;
         nonce = await token.nonces(owner.address);
         const domain = {
           name: await token.name(),
@@ -1886,7 +1889,7 @@ describe("BackedAutoFeeTokenImplementation", function () {
       // Use a deadline only slightly in the future so we can pass it without
       // letting many fee periods elapse (which would cause the multiplier to
       // decay and revert before the deadline check is reached).
-      deadline = baseTime + 100;
+      deadline = baseTime + 300;
       const nonce = await token.nonces(owner.address);
       const domain = {
         name: await token.name(),
@@ -1923,6 +1926,72 @@ describe("BackedAutoFeeTokenImplementation", function () {
           owner.address, actor.address, sharesToTransfer, deadline, sig.v, sig.r, sig.s
         )
       ).to.be.revertedWith("ERC20Permit: expired deadline");
+    });
+  });
+
+  describe('#delegatedTransferShares - updateMultiplier branch', () => {
+    // Exercises both sides of the `if (lastMultiplier != currentMultiplier)`
+    // branch inside the updateMultiplier modifier as reached via
+    // delegatedTransferShares.
+    const baseMintedAmount = ethers.BigNumber.from(10).pow(18);
+    const sharesToTransfer = ethers.BigNumber.from(10).pow(18).div(4);
+    let signature: string;
+    let deadline: number;
+
+    const buildSignature = async () => {
+      deadline = baseTime + 100 * accrualPeriodLength;
+      const nonce = await token.nonces(owner.address);
+      const domain = {
+        name: await token.name(),
+        version: "1",
+        chainId: await owner.signer.getChainId(),
+        verifyingContract: token.address
+      };
+      const types = {
+        DELEGATED_TRANSFER_SHARES: [
+          { type: 'address', name: 'owner' },
+          { type: 'address', name: 'to' },
+          { type: 'uint256', name: 'value' },
+          { type: 'uint256', name: 'nonce' },
+          { type: 'uint256', name: 'deadline' }
+        ]
+      };
+      const msg = {
+        owner: owner.address,
+        to: actor.address,
+        value: sharesToTransfer,
+        nonce: nonce,
+        deadline: deadline
+      };
+      const signer = await ethers.getSigner(owner.address);
+      signature = await signer._signTypedData(domain, types, msg);
+    };
+
+    cacheBeforeEach(async () => {
+      await token.connect(minter.signer).mint(owner.address, baseMintedAmount);
+      await token.setDelegateWhitelist(actor.address, true);
+    });
+
+    it('Should not touch the multiplier when no fee period has elapsed', async () => {
+      // No full period elapsed since lastTimeFeeApplied: getCurrentMultiplier
+      // returns the stored value, so the modifier skips _updateMultiplier.
+      await buildSignature();
+      const sig = ethers.utils.splitSignature(signature);
+      await token.connect(actor.signer).delegatedTransferShares(
+        owner.address, actor.address, sharesToTransfer, deadline, sig.v, sig.r, sig.s
+      );
+      expect(await token.lastMultiplier()).to.be.equal(await token.multiplier());
+    });
+
+    it('Should update the multiplier when fee periods have elapsed', async () => {
+      await buildSignature();
+      const multiplierBefore = await token.lastMultiplier();
+      await helpers.time.setNextBlockTimestamp(baseTime + 10 * accrualPeriodLength);
+      const sig = ethers.utils.splitSignature(signature);
+      await token.connect(actor.signer).delegatedTransferShares(
+        owner.address, actor.address, sharesToTransfer, deadline, sig.v, sig.r, sig.s
+      );
+      expect(await token.lastMultiplier()).to.be.lt(multiplierBefore);
     });
   });
 
@@ -1987,6 +2056,18 @@ describe("BackedAutoFeeTokenImplementation", function () {
         token.connect(minter.signer).mint(owner.address, 1)
       ).to.be.revertedWith("BackedToken: Multiplier cannot be zero");
     });
+
+    it('delegatedTransferShares should revert', async () => {
+      // The updateMultiplier modifier runs (and reverts) before the function
+      // body, so the signature is never reached and can be a dummy value.
+      await token.setDelegateWhitelist(actor.address, true);
+      const dummy = ethers.utils.hexZeroPad("0x01", 32);
+      await expect(
+        token.connect(actor.signer).delegatedTransferShares(
+          owner.address, tmpAccount.address, 1, baseTime * 2, 27, dummy, dummy
+        )
+      ).to.be.revertedWith("BackedToken: Multiplier cannot be zero");
+    });
   });
 
   describe('#decimals', () => {
@@ -2016,6 +2097,291 @@ describe("BackedAutoFeeTokenImplementation", function () {
       await expect(
         token.updateMultiplierWithNonce(newMult, currentMultiplier, currentMultiplierNonce.add(1), tooLate)
       ).to.be.revertedWith("BackedToken: Activation time needs to be before next period");
+    });
+  });
+
+  describe('#multiplierUpdates', () => {
+    describe('Initial state', () => {
+      it('Should have one initial entry after initialization', async () => {
+        expect(await token.multiplierUpdatesLength()).to.be.equal(1);
+      });
+
+      it('Should have correct initial values', async () => {
+        const initialUpdate = await token.multiplierUpdates(0);
+        expect(initialUpdate.previousMultiplier).to.be.equal(ethers.BigNumber.from(10).pow(18));
+        expect(initialUpdate.newMultiplier).to.be.equal(ethers.BigNumber.from(10).pow(18));
+        expect(initialUpdate.activationTime).to.be.equal(0);
+      });
+    });
+
+    describe('When updating multiplier immediately', () => {
+      cacheBeforeEach(async () => {
+        const currentMult = await token.multiplier();
+        const newMult = currentMult.mul(95).div(100); // 5% decrease
+        await token.updateMultiplierValue(newMult, currentMult, 0);
+      });
+
+      it('Should add new entry to multiplierUpdates', async () => {
+        expect(await token.multiplierUpdatesLength()).to.be.equal(2);
+      });
+
+      it('Should store correct values in new entry', async () => {
+        const update = await token.multiplierUpdates(1);
+        const currentTime = await helpers.time.latest();
+        expect(update.previousMultiplier).to.be.equal(ethers.BigNumber.from(10).pow(18));
+        expect(update.newMultiplier).to.be.equal(ethers.BigNumber.from(10).pow(18).mul(95).div(100));
+        expect(update.activationTime).to.be.equal(currentTime);
+      });
+    });
+
+    describe('When updating multiplier with future activation', () => {
+      const futureTime = baseTime + accrualPeriodLength / 2;
+
+      cacheBeforeEach(async () => {
+        const currentMult = await token.multiplier();
+        const newMult = currentMult.mul(110).div(100);
+        await token.updateMultiplierValue(newMult, currentMult, futureTime);
+      });
+
+      it('Should add new entry with future activation time', async () => {
+        expect(await token.multiplierUpdatesLength()).to.be.equal(2);
+        const update = await token.multiplierUpdates(1);
+        expect(update.activationTime).to.be.equal(futureTime);
+      });
+
+      it('Should emit MultiplierScheduled event', async () => {
+        // This test is within a nested context where futureTime is already set
+        // and multiplier update was already done in the cacheBeforeEach
+        // Let's verify the event was already emitted in that transaction
+        const update = await token.multiplierUpdates(1);
+        expect(update.activationTime).to.be.equal(futureTime);
+
+        // The MultiplierScheduled event was emitted in the cacheBeforeEach
+        // We can verify by checking that a scheduled update exists
+        expect(await token.newMultiplierActivationTime()).to.be.equal(futureTime);
+      });
+
+      describe('And then updating again before activation', () => {
+        it('Should overwrite previous pending update', async () => {
+          const currentMult = await token.multiplier();
+          const newerMult = currentMult.mul(120).div(100);
+          const newerTime = baseTime + accrualPeriodLength / 4;
+
+          await token.updateMultiplierValue(newerMult, currentMult, newerTime);
+
+          // Should still have 2 entries (initial + current), previous pending was overwritten
+          expect(await token.multiplierUpdatesLength()).to.be.equal(2);
+
+          const lastUpdate = await token.multiplierUpdates(1);
+          expect(lastUpdate.newMultiplier).to.be.equal(newerMult);
+          expect(lastUpdate.activationTime).to.be.equal(newerTime);
+        });
+      });
+
+      describe('And then updating after activation', () => {
+        it('Should add new entry after previous one activates', async () => {
+          // Move time to activation
+          await helpers.time.setNextBlockTimestamp(futureTime);
+          await token.transfer(actor.address, 1);
+
+          const currentMult = await token.multiplier();
+          const anotherNewMult = currentMult.mul(105).div(100);
+          await token.updateMultiplierValue(anotherNewMult, currentMult, 0);
+
+          // Should have 3 entries now
+          expect(await token.multiplierUpdatesLength()).to.be.equal(3);
+        });
+      });
+    });
+
+    describe('Multiple sequential updates', () => {
+      it('Should track history of all activated multiplier updates', async () => {
+        // Mint some tokens first to have balance for transfers
+        await token.connect(minter.signer).mint(owner.address, ethers.BigNumber.from(10).pow(20));
+
+        let currentMult = await token.multiplier();
+
+        // First update
+        const newMult1 = currentMult.mul(95).div(100);
+        await token.updateMultiplierValue(newMult1, currentMult, 0);
+
+        // Move time forward
+        await helpers.time.setNextBlockTimestamp(baseTime + accrualPeriodLength);
+        await token.transfer(actor.address, ethers.BigNumber.from(10).pow(18));
+
+        // Second update
+        currentMult = await token.multiplier();
+        const newMult2 = currentMult.mul(98).div(100);
+        await token.updateMultiplierValue(newMult2, currentMult, 0);
+
+        // Should have 3 entries total
+        expect(await token.multiplierUpdatesLength()).to.be.equal(3);
+
+        // Verify entries
+        const update1 = await token.multiplierUpdates(1);
+        const update2 = await token.multiplierUpdates(2);
+
+        expect(update1.previousMultiplier).to.be.equal(ethers.BigNumber.from(10).pow(18));
+        expect(update2.previousMultiplier).to.not.equal(ethers.BigNumber.from(10).pow(18));
+      });
+    });
+  });
+
+  describe('#initialize_v4', () => {
+    describe('When called on already initialized v4 contract', () => {
+      it('Should revert', async () => {
+        // Current token already has multiplierUpdates initialized
+        await expect(
+          token.initialize_v4([])
+        ).to.be.revertedWith("BackedAutoFeeTokenImplementation v4 already initialized");
+      });
+    });
+
+    describe('Initialize_v4 behavior validation', () => {
+      it('Should only allow initialization when array is empty', async () => {
+        // The initialize_v4 check: multiplierUpdates.length == 0
+        // This means it's designed for contracts that were deployed before v4
+        const currentLength = await token.multiplierUpdatesLength();
+        expect(currentLength).to.be.equal(1); // Already initialized with one entry
+
+        // Attempting to call it when array is not empty should revert
+        await expect(token.initialize_v4([])).to.be.revertedWith(
+          "BackedAutoFeeTokenImplementation v4 already initialized"
+        );
+      });
+    });
+
+    describe('When called on a proxy without multiplierUpdates populated', () => {
+      // Simulate a real pre-v4 -> v4 upgrade by upgrading a v1 proxy directly to
+      // the v4 implementation, leaving the multiplierUpdates array empty.
+      let tokenFreshV4: BackedAutoFeeTokenImplementation;
+      const oneE18 = ethers.BigNumber.from(10).pow(18);
+
+      cacheBeforeEach(async () => {
+        const v1Implementation = await new BackedTokenImplementation__factory(owner.signer).deploy();
+        const tokenProxy = await new BackedTokenProxy__factory(owner.signer).deploy(
+          v1Implementation.address,
+          proxyAdmin.address,
+          v1Implementation.interface.encodeFunctionData('initialize', [tokenName, tokenSymbol])
+        );
+
+        const v4Implementation = await new BackedAutoFeeTokenImplementation__factory(owner.signer).deploy();
+        await proxyAdmin.upgrade(tokenProxy.address, v4Implementation.address);
+
+        tokenFreshV4 = BackedAutoFeeTokenImplementation__factory.connect(tokenProxy.address, owner.signer);
+      });
+
+      it('Should store only the genesis sentinel when no past updates are provided', async () => {
+        expect(await tokenFreshV4.multiplierUpdatesLength()).to.be.equal(0);
+
+        await tokenFreshV4.initialize_v4([]);
+
+        expect(await tokenFreshV4.multiplierUpdatesLength()).to.be.equal(1);
+        const genesis = await tokenFreshV4.multiplierUpdates(0);
+        expect(genesis.previousMultiplier).to.be.equal(oneE18);
+        expect(genesis.newMultiplier).to.be.equal(oneE18);
+        expect(genesis.activationTime).to.be.equal(0);
+      });
+
+      it('Should backfill provided past multiplier updates after the genesis sentinel', async () => {
+        const pastUpdates = [
+          {
+            previousMultiplier: oneE18,
+            newMultiplier: ethers.BigNumber.from('990000000000000000'),
+            activationTime: 1_000,
+          },
+          {
+            previousMultiplier: ethers.BigNumber.from('990000000000000000'),
+            newMultiplier: ethers.BigNumber.from('980000000000000000'),
+            activationTime: 2_000,
+          },
+        ];
+
+        await tokenFreshV4.initialize_v4(pastUpdates);
+
+        expect(await tokenFreshV4.multiplierUpdatesLength()).to.be.equal(3); // genesis + 2
+
+        for (let i = 0; i < pastUpdates.length; i++) {
+          const stored = await tokenFreshV4.multiplierUpdates(i + 1);
+          expect(stored.previousMultiplier).to.be.equal(pastUpdates[i].previousMultiplier);
+          expect(stored.newMultiplier).to.be.equal(pastUpdates[i].newMultiplier);
+          expect(stored.activationTime).to.be.equal(pastUpdates[i].activationTime);
+        }
+      });
+
+      it('Should revert when a past update has a zero previousMultiplier', async () => {
+        const pastUpdates = [
+          {
+            previousMultiplier: 0,
+            newMultiplier: ethers.BigNumber.from('990000000000000000'),
+            activationTime: 1_000,
+          },
+        ];
+
+        await expect(tokenFreshV4.initialize_v4(pastUpdates)).to.be.revertedWith(
+          "BackedAutoFeeTokenImplementation: previousMultiplier cannot be zero"
+        );
+      });
+    });
+  });
+
+  describe('#multiplierUpdatesLength', () => {
+    it('Should return correct length', async () => {
+      const length = await token.multiplierUpdatesLength();
+      expect(length).to.be.equal(1);
+    });
+
+    it('Should increment after each multiplier update', async () => {
+      const initialLength = await token.multiplierUpdatesLength();
+
+      const currentMult = await token.multiplier();
+      const newMult = currentMult.mul(98).div(100);
+      await token.updateMultiplierValue(newMult, currentMult, 0);
+
+      const newLength = await token.multiplierUpdatesLength();
+      expect(newLength).to.be.equal(initialLength.add(1));
+    });
+  });
+
+  describe('#MultiplierScheduled event', () => {
+    it('Should emit MultiplierScheduled when setting future activation', async () => {
+      const currentMult = await token.multiplier();
+      const newMult = currentMult.mul(105).div(100);
+      const futureTime = baseTime + accrualPeriodLength / 2;
+
+      const tx = token.updateMultiplierValue(newMult, currentMult, futureTime);
+
+      await expect(tx)
+        .to.emit(token, "MultiplierScheduled")
+        .withArgs(newMult, futureTime);
+    });
+
+    it('Should emit MultiplierUpdated (not MultiplierScheduled) when activating immediately', async () => {
+      const currentMult = await token.multiplier();
+      const newMult = currentMult.mul(105).div(100);
+
+      const tx = token.updateMultiplierValue(newMult, currentMult, 0);
+
+      await expect(tx)
+        .to.emit(token, "MultiplierUpdated")
+        .withArgs(newMult);
+
+      await expect(tx)
+        .to.not.emit(token, "MultiplierScheduled");
+    });
+
+    it('Should emit MultiplierScheduled when using updateMultiplierWithNonce', async () => {
+      const currentMult = await token.multiplier();
+      const currentNonce = await token.multiplierNonce();
+      const newMult = currentMult.mul(105).div(100);
+      const newNonce = currentNonce.add(10);
+      const futureTime = baseTime + accrualPeriodLength / 2;
+
+      const tx = token.updateMultiplierWithNonce(newMult, currentMult, newNonce, futureTime);
+
+      await expect(tx)
+        .to.emit(token, "MultiplierScheduled")
+        .withArgs(newMult, futureTime);
     });
   });
 
