@@ -698,4 +698,8 @@ describe("BackedToken", function () {
       token.connect(tmpAccount.signer).setTerms("Random Terms")
     ).to.be.revertedWith("Ownable: caller is not the owner");
   });
+
+  it("Returns ERC20 default decimals", async function () {
+    expect(await token.decimals()).to.equal(18);
+  });
 });

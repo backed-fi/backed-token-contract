@@ -66,7 +66,6 @@ contract WrappedBackedTokenFactory is Ownable {
             "Factory: address should not be 0"
         );
 
-        wrappedTokenImplementation = new WrappedBackedTokenImplementation();
         proxyAdmin = new ProxyAdmin();
         proxyAdmin.transferOwnership(proxyAdminOwner);
     }
@@ -77,7 +76,6 @@ contract WrappedBackedTokenFactory is Ownable {
         address underlying;            // The address of the wrapped token underlying
         address tokenOwner;            // The address of the account to which the owner role will be assigned
         address pauser;                // The address of the account to which the pauser role will be assigned
-        address sanctionsList;         // The address of sanctions list contract
     }
 
     /**
@@ -98,12 +96,16 @@ contract WrappedBackedTokenFactory is Ownable {
         );
 
         bytes32 salt = keccak256(
-            abi.encodePacked(configuration.name, configuration.symbol)
+            abi.encodePacked(configuration.name, configuration.symbol, configuration.underlying)
         );
 
         WrappedBackedTokenProxy newProxy = new WrappedBackedTokenProxy{salt: salt}(
+            address(this), //Using this as implementation to not make address dependent on implementation address
+            address(this),
+            ""
+        );
+        newProxy.upgradeToAndCall(
             address(wrappedTokenImplementation),
-            address(proxyAdmin),
             abi.encodeWithSelector(
                 bytes4(
                     keccak256(
@@ -115,13 +117,13 @@ contract WrappedBackedTokenFactory is Ownable {
                 configuration.underlying
             )
         );
+        newProxy.changeAdmin(address(proxyAdmin));
 
         WrappedBackedTokenImplementation newToken = WrappedBackedTokenImplementation(
                 address(newProxy)
             );
             
         newToken.setPauser(configuration.pauser);
-        newToken.setSanctionsList(configuration.sanctionsList);
         newToken.transferOwnership(configuration.tokenOwner);
 
         emit NewToken(

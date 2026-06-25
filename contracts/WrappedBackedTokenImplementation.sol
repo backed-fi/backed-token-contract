@@ -36,25 +36,31 @@
 
 pragma solidity 0.8.9;
 
+import "./interfaces/IBackedAutoFeeToken.sol";
+import "./interfaces/IBackedToken.sol";
 import "@openzeppelin/contracts-upgradeable-new/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable-new/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable-new/access/OwnableUpgradeable.sol";
-import "./SanctionsList.sol";
+import "@openzeppelin/contracts-upgradeable-new/utils/math/MathUpgradeable.sol";
 
 /**
  * @dev
  *
  * This token contract is following the ERC20 standard.
  * It inherits ERC4626Upgradeable, which extends the basic ERC20 to be a representation of changing underlying token.
+ * The underlying token is expected to be an IBackedAutoFeeToken, that is a token with an auto fee mechanism,
+ * and a multiplier that changes over time to reflect the fees and corporate actions applied.
+ * It translates the shares of the underlying IBackedAutoFeeToken to an amount of assets, using the current multiplier of the underlying token.
+ * The shares of the underlying token are kept in the contract, and the corresponding amount of this token is minted to the user.
  * Enforces Sanctions List via the Chainalysis standard interface.
  * The contract contains one role:
  *  - A pauser, that can pause or restore all transfers in the contract.
- *  - An owner, that can set the above, and also the sanctionsList pointer.
- * The owner can also set who can use the EIP-712 functionality, either specific accounts via a whitelist, or everyone.
  * 
  */
 
 contract WrappedBackedTokenImplementation is OwnableUpgradeable, ERC4626Upgradeable, ERC20PermitUpgradeable {
+    using MathUpgradeable for uint256;
+
     string constant public VERSION = "1.0.0";
 
     // Calculating the Delegated Transfer typehash:
@@ -71,29 +77,18 @@ contract WrappedBackedTokenImplementation is OwnableUpgradeable, ERC4626Upgradea
     // Pause:
     bool public isPaused;
 
-    // SanctionsList:
-    SanctionsList public sanctionsList;
-
     // Terms:
     string public terms;
 
     // Events:
     event NewPauser(address indexed newPauser);
-    event NewSanctionsList(address indexed newSanctionsList);
-    event DelegateWhitelistChange(address indexed whitelistAddress, bool status);
-    event DelegateModeChange(bool delegateMode);
     event PauseModeChange(bool pauseMode);
     event NewTerms(string newTerms);
-
-    modifier allowedDelegate {
-        require(delegateMode || delegateWhitelist[_msgSender()], "WrappedBackedToken: Unauthorized delegate");
-        _;
-    }
 
 
     // constructor, call initializer to lock the implementation instance.
     constructor () {
-        initialize("Wrapped Backed Token Implementation", "wBTI", address(0x0000000000000000000000000000000000000000));
+        _disableInitializers();
     }
 
     function initialize(string memory name_, string memory symbol_, address underlying_) public initializer {
@@ -112,21 +107,6 @@ contract WrappedBackedTokenImplementation is OwnableUpgradeable, ERC4626Upgradea
     }
 
     /**
-     * @inheritdoc IERC20PermitUpgradeable
-     */
-    function permit(
-        address owner,
-        address spender,
-        uint256 value,
-        uint256 deadline,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) public virtual override allowedDelegate {
-        super.permit(owner, spender, value, deadline, v, r, s);
-    }
-    
-    /**
      * @dev Delegated Transfer, transfer via a sign message, using erc712.
      */
     function delegatedTransfer(
@@ -137,7 +117,7 @@ contract WrappedBackedTokenImplementation is OwnableUpgradeable, ERC4626Upgradea
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) external virtual allowedDelegate {
+    ) external virtual {
         require(block.timestamp <= deadline, "ERC20Permit: expired deadline");
 
         bytes32 structHash = keccak256(abi.encode(DELEGATED_TRANSFER_TYPEHASH, owner, to, value, _useNonce(owner), deadline));
@@ -178,50 +158,6 @@ contract WrappedBackedTokenImplementation is OwnableUpgradeable, ERC4626Upgradea
     }
 
     /**
-     * @dev Function to change the contract Senctions List. Allowed only for owner
-     *
-     * Emits a { NewSanctionsList } event
-     *
-     * @param newSanctionsList The address of the new Senctions List following the Chainalysis standard
-     */
-    function setSanctionsList(address newSanctionsList) external onlyOwner {
-        // Check the proposed sanctions list contract has the right interface:
-        require(!SanctionsList(newSanctionsList).isSanctioned(address(this)), "WrappedBackedToken: Wrong List interface");
-
-        sanctionsList = SanctionsList(newSanctionsList);
-        emit NewSanctionsList(newSanctionsList);
-    }
-
-
-    /**
-     * @dev EIP-712 Function to change the delegate status of account.
-     *  Allowed only for owner
-     *
-     * Emits a { DelegateWhitelistChange } event
-     *
-     * @param whitelistAddress  The address for which to change the delegate status
-     * @param status            The new delegate status
-     */
-    function setDelegateWhitelist(address whitelistAddress, bool status) external onlyOwner {
-        delegateWhitelist[whitelistAddress] = status;
-        emit DelegateWhitelistChange(whitelistAddress, status);
-    }
-
-    /**
-     * @dev EIP-712 Function to change the contract delegate mode. Allowed
-     *  only for owner
-     *
-     * Emits a { DelegateModeChange } event
-     *
-     * @param _delegateMode The new delegate mode for the contract
-     */
-    function setDelegateMode(bool _delegateMode) external onlyOwner {
-        delegateMode = _delegateMode;
-
-        emit DelegateModeChange(_delegateMode);
-    }
-
-    /**
      * @dev Function to change the contract terms. Allowed only for owner
      *
      * Emits a { NewTerms } event
@@ -248,10 +184,10 @@ contract WrappedBackedTokenImplementation is OwnableUpgradeable, ERC4626Upgradea
         require(!isPaused, "WrappedBackedToken: token transfer while paused");
 
         if (from != address(0)) {
-            require(!sanctionsList.isSanctioned(from), "WrappedBackedToken: sender is sanctioned");
+            require(!IBackedToken(asset()).sanctionsList().isSanctioned(from), "WrappedBackedToken: sender is sanctioned");
         }
         if (to != address(0)) {
-            require(!sanctionsList.isSanctioned(to), "WrappedBackedToken: receiver is sanctioned");
+            require(!IBackedToken(asset()).sanctionsList().isSanctioned(to), "WrappedBackedToken: receiver is sanctioned");
         }
 
         super._beforeTokenTransfer(from, to, amount);
@@ -263,9 +199,85 @@ contract WrappedBackedTokenImplementation is OwnableUpgradeable, ERC4626Upgradea
         address spender,
         uint256 amount
     ) internal virtual override {
-        require(!sanctionsList.isSanctioned(spender), "WrappedBackedToken: spender is sanctioned");
+        require(!IBackedToken(asset()).sanctionsList().isSanctioned(spender), "WrappedBackedToken: spender is sanctioned");
 
         super._spendAllowance(owner, spender, amount);
     }
     
+    /** @dev See {IERC4626-previewMint}.
+     * 
+     * Amounts are rounded down, in order to accomodate multiplier math done on underlying token
+     */
+    function previewMint(uint256 shares) public view virtual override returns (uint256) {
+        return _convertToAssets(shares, MathUpgradeable.Rounding.Down);
+    }
+
+    /** @dev See {IERC4626-previewWithdraw}.
+     * 
+     * Amounts are rounded down, in order to accomodate multiplier math done on underlying token
+     */
+    function previewWithdraw(uint256 assets) public view virtual override returns (uint256) {
+        return _convertToShares(assets, MathUpgradeable.Rounding.Down);
+    }
+
+    /** @dev See {IERC4626-totalAssets}.
+     * 
+     * Instead of checking actual balances, we assume that we maintain 1:1 ratio between wrapper token and the shares of the underlying token
+     * , so total assets is calculated as the balance of shares of the underlying token kept by the contract, multiplied by the current multiplier of the underlying token.
+     */
+    function totalAssets() public view virtual override returns (uint256) {
+        return _convertToAssets(totalSupply(), MathUpgradeable.Rounding.Down);
+    }
+
+    /**
+     * @dev Internal conversion function (from assets to shares) with support for rounding direction.
+     */
+    function _convertToShares(uint256 assets, MathUpgradeable.Rounding rounding) internal view virtual override returns (uint256) {
+        (uint256 currentMultiplier, ,) = IBackedAutoFeeToken(asset()).getCurrentMultiplier();
+        return assets.mulDiv(1e18, currentMultiplier, rounding);
+    }
+
+    /**
+     * @dev Internal conversion function (from shares to assets) with support for rounding direction.
+     */
+    function _convertToAssets(uint256 shares, MathUpgradeable.Rounding rounding) internal view virtual override returns (uint256) {
+        (uint256 currentMultiplier, ,) = IBackedAutoFeeToken(asset()).getCurrentMultiplier();
+        return shares.mulDiv(currentMultiplier, 1e18, rounding);
+    }
+
+    /**
+     * @dev Deposit/mint common workflow, adjusted to the fact, that wrapper token is keeping the shares of the underlying token and not the underlying tokens themselves,
+     *  so it needs to transfer the shares from the user, and not do erc20 transfers as in a normal ERC4626 implementation.
+     */
+    function _deposit(address caller, address receiver, uint256 assetsRequested, uint256 shares) internal virtual override {
+        IBackedAutoFeeToken assetToken = IBackedAutoFeeToken(asset());
+        assetToken.transferSharesFrom(caller, address(this), shares);
+        _mint(receiver, shares);
+
+        uint256 assets = convertToAssets(shares);
+        emit Deposit(caller, receiver, assets, shares);
+    }
+
+    /**
+     * @dev Withdraw/redeem common workflow, adjusted to the fact, that wrapper token is keeping the shares of the underlying token and not the underlying tokens themselves,
+     *  so it needs to transfer the shares to the user, and not do erc20 transfers as in a normal ERC4626 implementation.
+     */
+    function _withdraw(
+        address caller,
+        address receiver,
+        address owner,
+        uint256 assetsRequested,
+        uint256 shares
+    ) internal virtual override {
+        if (caller != owner) {
+            _spendAllowance(owner, caller, shares);
+        }
+
+        _burn(owner, shares);
+        IBackedAutoFeeToken assetToken = IBackedAutoFeeToken(asset());
+        assetToken.transferShares(receiver, shares);
+
+        uint256 assets = convertToAssets(shares);
+        emit Withdraw(caller, receiver, owner, assets, shares);
+    }
 }
