@@ -76,7 +76,6 @@ contract WrappedBackedTokenFactory is Ownable {
         address underlying;            // The address of the wrapped token underlying
         address tokenOwner;            // The address of the account to which the owner role will be assigned
         address pauser;                // The address of the account to which the pauser role will be assigned
-        address sanctionsList;         // The address of sanctions list contract
     }
 
     /**
@@ -125,7 +124,6 @@ contract WrappedBackedTokenFactory is Ownable {
             );
             
         newToken.setPauser(configuration.pauser);
-        newToken.setSanctionsList(configuration.sanctionsList);
         newToken.transferOwnership(configuration.tokenOwner);
 
         emit NewToken(

@@ -37,8 +37,8 @@
 pragma solidity 0.8.9;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "./interfaces/IBackedAutoFeeToken.sol";
 import "./BackedTokenImplementation.sol";
+import "./interfaces/IBackedAutoFeeToken.sol";
 
 /**
  * @dev
@@ -158,7 +158,7 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation, IBackedA
     function initialize(
         string memory name_,
         string memory symbol_
-    ) public virtual override {
+    ) public virtual override(BackedTokenImplementation, IBackedToken) {
         super.initialize(name_, symbol_);
         _initialize_auto_fee(24 * 3600, block.timestamp, 0);
     }
@@ -231,6 +231,13 @@ contract BackedAutoFeeTokenImplementation is BackedTokenImplementation, IBackedA
             newMultiplier: 1e18,
             activationTime: 0
         }));
+    }
+
+    /**
+     * @inheritdoc IERC20MetadataUpgradeable
+     */
+    function decimals() public view virtual override(BackedTokenImplementation, IBackedToken) returns (uint8) {
+        return ERC20Upgradeable.decimals();
     }
 
     /**

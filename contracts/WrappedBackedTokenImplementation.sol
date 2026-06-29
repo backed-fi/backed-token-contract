@@ -36,12 +36,12 @@
 
 pragma solidity 0.8.9;
 
+import "./interfaces/IBackedAutoFeeToken.sol";
+import "./interfaces/IBackedToken.sol";
 import "@openzeppelin/contracts-upgradeable-new/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable-new/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable-new/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable-new/utils/math/MathUpgradeable.sol";
-import "./SanctionsList.sol";
-import "./interfaces/IBackedAutoFeeToken.sol";
 
 /**
  * @dev
@@ -55,7 +55,6 @@ import "./interfaces/IBackedAutoFeeToken.sol";
  * Enforces Sanctions List via the Chainalysis standard interface.
  * The contract contains one role:
  *  - A pauser, that can pause or restore all transfers in the contract.
- *  - An owner, that can set the above, and also the sanctionsList pointer.
  * 
  */
 
@@ -78,22 +77,18 @@ contract WrappedBackedTokenImplementation is OwnableUpgradeable, ERC4626Upgradea
     // Pause:
     bool public isPaused;
 
-    // SanctionsList:
-    SanctionsList public sanctionsList;
-
     // Terms:
     string public terms;
 
     // Events:
     event NewPauser(address indexed newPauser);
-    event NewSanctionsList(address indexed newSanctionsList);
     event PauseModeChange(bool pauseMode);
     event NewTerms(string newTerms);
 
 
     // constructor, call initializer to lock the implementation instance.
     constructor () {
-        initialize("Wrapped Backed Token Implementation", "wBTI", address(0x0000000000000000000000000000000000000000));
+        _disableInitializers();
     }
 
     function initialize(string memory name_, string memory symbol_, address underlying_) public initializer {
@@ -163,21 +158,6 @@ contract WrappedBackedTokenImplementation is OwnableUpgradeable, ERC4626Upgradea
     }
 
     /**
-     * @dev Function to change the contract Senctions List. Allowed only for owner
-     *
-     * Emits a { NewSanctionsList } event
-     *
-     * @param newSanctionsList The address of the new Senctions List following the Chainalysis standard
-     */
-    function setSanctionsList(address newSanctionsList) external onlyOwner {
-        // Check the proposed sanctions list contract has the right interface:
-        require(!SanctionsList(newSanctionsList).isSanctioned(address(this)), "WrappedBackedToken: Wrong List interface");
-
-        sanctionsList = SanctionsList(newSanctionsList);
-        emit NewSanctionsList(newSanctionsList);
-    }
-
-    /**
      * @dev Function to change the contract terms. Allowed only for owner
      *
      * Emits a { NewTerms } event
@@ -204,10 +184,10 @@ contract WrappedBackedTokenImplementation is OwnableUpgradeable, ERC4626Upgradea
         require(!isPaused, "WrappedBackedToken: token transfer while paused");
 
         if (from != address(0)) {
-            require(!sanctionsList.isSanctioned(from), "WrappedBackedToken: sender is sanctioned");
+            require(!IBackedToken(asset()).sanctionsList().isSanctioned(from), "WrappedBackedToken: sender is sanctioned");
         }
         if (to != address(0)) {
-            require(!sanctionsList.isSanctioned(to), "WrappedBackedToken: receiver is sanctioned");
+            require(!IBackedToken(asset()).sanctionsList().isSanctioned(to), "WrappedBackedToken: receiver is sanctioned");
         }
 
         super._beforeTokenTransfer(from, to, amount);
@@ -219,7 +199,7 @@ contract WrappedBackedTokenImplementation is OwnableUpgradeable, ERC4626Upgradea
         address spender,
         uint256 amount
     ) internal virtual override {
-        require(!sanctionsList.isSanctioned(spender), "WrappedBackedToken: spender is sanctioned");
+        require(!IBackedToken(asset()).sanctionsList().isSanctioned(spender), "WrappedBackedToken: spender is sanctioned");
 
         super._spendAllowance(owner, spender, amount);
     }

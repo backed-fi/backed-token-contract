@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.9;
 
+import "../SanctionsList.sol";
+import "./IBackedToken.sol";
+
 /**
  * @title IBackedAutoFeeToken
  * @dev Interface for the BackedAutoFeeToken, a rebasing ERC20 token with automatic fee accrual
@@ -11,7 +14,7 @@ pragma solidity 0.8.9;
  * - Fees are automatically applied by decreasing the multiplier over time
  * - The multiplier can be updated by an authorized multiplierUpdater address
  */
-interface IBackedAutoFeeToken {
+interface IBackedAutoFeeToken is IBackedToken {
     /**
      * @dev Struct representing multiplier update
      * @param previousMultiplier The multiplier value before this update
@@ -77,12 +80,6 @@ interface IBackedAutoFeeToken {
     );
 
     // View functions - EIP-712 and Roles
-
-    /**
-     * @dev Returns the EIP-712 typehash for delegated share transfers
-     * @return The keccak256 hash of the DELEGATED_TRANSFER_SHARES type string
-     */
-    function DELEGATED_TRANSFER_SHARES_TYPEHASH() external view returns (bytes32);
 
     /**
      * @dev Returns the address authorized to update the multiplier
